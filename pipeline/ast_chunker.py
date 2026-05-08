@@ -10,10 +10,7 @@ class ASTChunker:
         self.file_path = file_path
         self.module_name = Path(file_path).stem
 
-        self.source = Path(file_path).read_text(
-            encoding="utf-8"
-        )
-
+        self.source = Path(file_path).read_text(encoding="utf-8")
         self.tree = ast.parse(self.source)
 
         self.imports_context = self._extract_imports()
@@ -39,41 +36,25 @@ class ASTChunker:
 
                 chunks.append(class_chunk)
 
-                class_chunk_id = (
-                    class_chunk["metadata"]["chunk_id"]
-                )
+                class_chunk_id = class_chunk["metadata"]["chunk_id"]
 
                 class_methods = [
                     child.name
                     for child in node.body
-                    if (
-                        isinstance(
-                            child,
-                            ast.FunctionDef
-                        )
-                        and not self._is_noise(
-                            child,
-                            child.name
-                        )
-                    )
+                    if isinstance(child, ast.FunctionDef)
+                    and not self._is_noise(child, child.name)
                 ]
 
-                # métodos da classe
                 for child in node.body:
 
-                    if not isinstance(
-                        child,
-                        ast.FunctionDef
-                    ):
+                    if not isinstance(child, ast.FunctionDef):
                         continue
 
                     if self._is_noise(child, child.name):
                         continue
 
                     siblings = [
-                        m
-                        for m in class_methods
-                        if m != child.name
+                        m for m in class_methods if m != child.name
                     ]
 
                     method_chunk = self._build_chunk(
@@ -96,7 +77,7 @@ class ASTChunker:
                     node=node,
                     node_type="function",
                     parent_class=None,
-                    parent_chunk_id=None,
+                    parent_chunk_id=f"{self.module_name}::GLOBAL",
                     siblings=[],
                 )
 
@@ -104,18 +85,34 @@ class ASTChunker:
 
         return chunks
 
+    # -----------------------------
+    # AST helpers
+    # -----------------------------
+
+    def _extract_calls(self, node):
+        calls = []
+
+        for child in ast.walk(node):
+            if isinstance(child, ast.Call):
+
+                if isinstance(child.func, ast.Attribute):
+                    calls.append(child.func.attr)
+
+                elif isinstance(child.func, ast.Name):
+                    calls.append(child.func.id)
+
+        return list(set(calls))
+
     def _extract_imports(self):
         imports = []
 
         for node in ast.walk(self.tree):
 
             if isinstance(node, ast.Import):
-
                 for alias in node.names:
                     imports.append(alias.name)
 
             elif isinstance(node, ast.ImportFrom):
-
                 if node.module:
                     imports.append(node.module)
 
@@ -142,182 +139,106 @@ class ASTChunker:
 
         return decorators
 
-    def _build_hierarchy_path(
-        self,
-        node_type,
-        parent_class,
-        name,
-    ):
-        path = [
-            f"Module({self.module_name})"
-        ]
-        # classe
-        if node_type == "class":
-            path.append(
-                f"Class({name})"
-            )
+    # -----------------------------
+    # Structure helpers
+    # -----------------------------
 
-        # método/função
+    def _build_hierarchy_path(self, node_type, parent_class, name):
+        path = [f"Module({self.module_name})"]
+
+        if node_type == "class":
+            path.append(f"Class({name})")
+
         elif node_type == "function":
             if parent_class:
-                path.append(
-                    f"Class({parent_class})"
-                )
-            path.append(
-                f"Function({name})"
-            )
+                path.append(f"Class({parent_class})")
+            path.append(f"Function({name})")
 
         return " > ".join(path)
 
-    def _build_chunk_id(
-        self,
-        node_type,
-        name,
-        parent_class=None,
-    ):
-        base = Path(
-            self.file_path
-        ).name
-        # classe
+    def _build_chunk_id(self, node_type, name, parent_class=None):
+        base = Path(self.file_path).name
+
         if node_type == "class":
             return f"{base}::{name}"
 
-        # método
         if parent_class:
-            return (
-                f"{base}"
-                f"::{parent_class}"
-                f"::{name}"
-            )
+            return f"{base}::{parent_class}::{name}"
 
-        # função global
         return f"{base}::{name}"
 
-    def _build_symbol_path(
-        self,
-        parent_class,
-        name,
-    ):
+    def _build_symbol_path(self, parent_class, name):
         base = Path(self.file_path).stem
 
         if parent_class:
-            return (
-                f"{base}.{parent_class}.{name}"
-            )
+            return f"{base}.{parent_class}.{name}"
 
         return f"{base}.{name}"
 
     def _is_noise(self, node, name: str) -> bool:
-
         if not name:
             return True
 
-        noise_patterns = [
-            "__str__",
-            "__repr__",
-            "__eq__",
-            "__hash__",
-        ]
+        noise_patterns = {"__str__", "__repr__", "__eq__", "__hash__"}
 
         if name in noise_patterns:
             return True
 
-        if (
-            isinstance(node, ast.ClassDef)
-            and name == "Meta"
-        ):
+        if isinstance(node, ast.ClassDef) and name == "Meta":
             return True
 
         return False
 
-    # bootstrap semântico continua ativo
-    def _infer_semantic(self, name: str) -> str:
+    # -----------------------------
+    # Semantic layer
+    # -----------------------------
 
+    def _infer_semantic(self, name: str) -> str:
         name_lower = name.lower()
 
-        if any(
-            k in name_lower
-            for k in [
-                "validate",
-                "check",
-                "clean",
-            ]
-        ):
+        if any(k in name_lower for k in ["validate", "check", "clean"]):
             return "validation"
 
-        if any(
-            k in name_lower
-            for k in [
-                "auth",
-                "permission",
-                "role",
-            ]
-        ):
+        if any(k in name_lower for k in ["auth", "permission", "role"]):
             return "authorization"
 
         if any(
             k in name_lower
-            for k in [
-                "create",
-                "save",
-                "insert",
-                "update",
-                "delete",
-            ]
+            for k in ["create", "save", "insert", "update", "delete"]
         ):
             return "mutation"
 
-        if any(
-            k in name_lower
-            for k in [
-                "get",
-                "fetch",
-                "list",
-                "query",
-            ]
-        ):
+        if any(k in name_lower for k in ["get", "fetch", "list", "query"]):
             return "query"
 
         return "general"
 
-    def _calculate_importance(
-        self,
-        semantic,
-        node_type,
-        name,
-        decorators,
-    ):
-        importance_score = 1.0
+    def _calculate_importance(self, semantic, node_type, name, decorators):
+        score = 1.0
 
         if semantic == "authorization":
-            importance_score += 0.5
-
+            score += 0.5
         elif semantic == "validation":
-            importance_score += 0.4
-
+            score += 0.4
         elif semantic == "mutation":
-            importance_score += 0.3
-
+            score += 0.3
         elif semantic == "query":
-            importance_score += 0.1
+            score += 0.1
 
-        if (
-            node_type == "class"
-            and semantic != "general"
-        ):
-            importance_score += 0.2
+        if node_type == "class" and semantic != "general":
+            score += 0.2
 
-        if (
-            name.startswith("get_")
-            or name.startswith("fetch_")
-        ):
-            importance_score -= 0.2
+        if name.startswith(("get_", "fetch_")):
+            score -= 0.2
 
-        # decorators relevantes
         if decorators:
-            importance_score += 0.2
+            score += 0.2
 
-        return float(importance_score)
+        return float(score)
+
+    # -----------------------------
+    # Chunk builder
+    # -----------------------------
 
     def _build_chunk(
         self,
@@ -327,30 +248,15 @@ class ASTChunker:
         parent_chunk_id=None,
         siblings=None,
     ):
-
-        logger.debug(
-            "CHUNKER VERSION ATIVA ✔"
-        )
-
         start_line = node.lineno
-        end_line = getattr(
-            node,
-            "end_lineno",
-            start_line + 1,
-        )
+        end_line = getattr(node, "end_lineno", start_line + 1)
 
         source_lines = self.source.splitlines()
-
-        code = "\n".join(
-            source_lines[
-                start_line - 1:end_line
-            ]
-        )
+        code = "\n".join(source_lines[start_line - 1 : end_line])
 
         name = getattr(node, "name", "") or ""
 
         semantic = self._infer_semantic(name)
-
         decorators = self._extract_decorators(node)
 
         chunk_id = self._build_chunk_id(
@@ -359,12 +265,10 @@ class ASTChunker:
             parent_class=parent_class,
         )
 
-        hierarchy_path = (
-            self._build_hierarchy_path(
-                node_type=node_type,
-                parent_class=parent_class,
-                name=name,
-            )
+        hierarchy_path = self._build_hierarchy_path(
+            node_type=node_type,
+            parent_class=parent_class,
+            name=name,
         )
 
         symbol_path = self._build_symbol_path(
@@ -372,30 +276,8 @@ class ASTChunker:
             name=name,
         )
 
-        importance_score = (
-            self._calculate_importance(
-                semantic=semantic,
-                node_type=node_type,
-                name=name,
-                decorators=decorators,
-            )
-        )
-
-        logger.debug(
-            f"[DEBUG] name={name} "
-            f"semantic={semantic}"
-        )
-
-        logger.debug(
-            f"[CTX] chunk_id={chunk_id}"
-        )
-
-        logger.debug(
-            f"[CTX] parent_class={parent_class}"
-        )
-
-        logger.debug(
-            f"[CTX] decorators={decorators}"
+        importance_score = self._calculate_importance(
+            semantic, node_type, name, decorators
         )
 
         return {
@@ -404,44 +286,21 @@ class ASTChunker:
                 "type": node_type,
                 "name": name,
                 "file": self.file_path,
-
                 "start_line": start_line,
                 "end_line": end_line,
-
                 "symbol_path": symbol_path,
-
                 "semantic_type": semantic,
-
                 "importance_score": importance_score,
-
-                # 🔥 context envelope
                 "chunk_id": chunk_id,
-
-                "parent_chunk_id": (
-                    parent_chunk_id
-                ),
-
+                "parent_chunk_id": parent_chunk_id,
                 "parent_class": parent_class,
-
-                "module_name": (
-                    self.module_name
-                ),
-
-                "ast_hierarchy_path": (
-                    hierarchy_path
-                ),
-
+                "module_name": self.module_name,
+                "ast_hierarchy_path": hierarchy_path,
                 "decorators": decorators,
-
-                "imports_context": (
-                    self.imports_context
-                ),
-
+                "imports_context": self.imports_context,
                 "siblings": siblings or [],
-
-                # futura expansão
+                "calls": self._extract_calls(node),
                 "semantic_matches": [],
-
                 "semantic_confidence": 0.0,
             },
         }
