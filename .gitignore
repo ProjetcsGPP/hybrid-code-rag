@@ -1,21 +1,44 @@
-venv/
-.env
-
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.sqlite3
 
-chroma/
-chromadb/
+# Virtualenv
+venv/
+.env/
 
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
+# VSCode
 .vscode/
+
+# JetBrains
 .idea/
 
-*.sqlite3
-*.db
+# OS
+.DS_Store
+Thumbs.db
 
-logs/
+# Logs
+*.log
+
+# ChromaDB / Vector DB
+chroma/
+chroma_db/
+*.parquet
+
+# Cache
+.cache/
+.pytest_cache/
+
+# Build
+dist/
+build/
+
+# Secrets
+.env
+.env.local
+
+# Ollama / embeddings temporários
+models/
 tmp/
