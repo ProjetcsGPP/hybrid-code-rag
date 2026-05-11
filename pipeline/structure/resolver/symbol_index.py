@@ -1,3 +1,5 @@
+# pipeline/structure/resolver/symbol_index.py
+
 from typing import Dict, List
 from pipeline.contracts import Symbol
 

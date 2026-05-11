@@ -1,3 +1,5 @@
+# pipeline/structure/relationship_extractor.py
+
 from pipeline.contracts import Relationship, Symbol
 from pipeline.structure.resolver.symbol_index import SymbolIndex
 
@@ -26,8 +28,27 @@ class RelationshipExtractor:
         # CALLS
         # ---------------------------
         if symbol.calls:
-
             for call in symbol.calls:
+
+                # -----------------------------------
+                # IGNORA CALLS EXTERNAS / FRAMEWORK
+                # -----------------------------------
+
+                if "." in call:
+
+                    root = call.split(".")[0]
+
+                    ignored_roots = {
+                        "self",
+                        "super",
+                        "objects",
+                        "models",
+                        "timezone",
+                        "settings",
+                    }
+
+                    if root in ignored_roots:
+                        continue
 
                 target = symbol_index.resolve_best(call, context=symbol)
 

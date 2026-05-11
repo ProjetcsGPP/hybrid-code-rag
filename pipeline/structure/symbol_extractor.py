@@ -1,3 +1,5 @@
+# pipeline/structure/symbol_extractor.py
+
 from pipeline.contracts import Symbol
 
 

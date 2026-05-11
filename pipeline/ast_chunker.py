@@ -1,3 +1,12 @@
+# pipeline/ast_chunker.py
+
+# Este módulo define a classe ASTChunker, que é responsável por analisar um arquivo Python 
+# usando a biblioteca ast e extrair "chunks" de código representando classes e funções. 
+# Cada chunk inclui metadados detalhados, como tipo, nome, caminho simbólico, tipo semântico 
+# inferido, score de importância, hierarquia AST e contexto de imports. O objetivo é criar 
+# uma representação estruturada do código para facilitar análises posteriores, como 
+# identificação de dependências e relações semânticas entre os componentes do código.
+
 import ast
 import logging
 from pathlib import Path
@@ -90,18 +99,74 @@ class ASTChunker:
     # -----------------------------
 
     def _extract_calls(self, node):
+
         calls = []
 
-        for child in ast.walk(node):
-            if isinstance(child, ast.Call):
+        # -------------------------------------------------
+        # CLASS CHUNK:
+        # NÃO entra em métodos internos
+        # -------------------------------------------------
 
-                if isinstance(child.func, ast.Attribute):
-                    calls.append(child.func.attr)
+        if isinstance(node, ast.ClassDef):
 
-                elif isinstance(child.func, ast.Name):
-                    calls.append(child.func.id)
+            nodes_to_scan = []
+
+            for child in node.body:
+
+                # ignora métodos da classe
+                if isinstance(child, ast.FunctionDef):
+                    continue
+
+                nodes_to_scan.extend(ast.walk(child))
+
+        else:
+            nodes_to_scan = ast.walk(node)
+
+        for child in nodes_to_scan:
+
+            if not isinstance(child, ast.Call):
+                continue
+
+            call_name = self._resolve_call_name(child.func)
+
+            if call_name:
+                calls.append(call_name)
 
         return list(set(calls))
+
+
+    def _resolve_call_name(self, node):
+
+        # foo()
+        if isinstance(node, ast.Name):
+            return node.id
+
+        # obj.method()
+        if isinstance(node, ast.Attribute):
+
+            parts = []
+
+            current = node
+
+            while isinstance(current, ast.Attribute):
+                parts.append(current.attr)
+                current = current.value
+
+            # self.method()
+            if isinstance(current, ast.Name):
+                parts.append(current.id)
+
+            # super().method()
+            elif isinstance(current, ast.Call):
+
+                if isinstance(current.func, ast.Name):
+                    parts.append(current.func.id)
+
+            parts.reverse()
+
+            return ".".join(parts)
+
+        return None
 
     def _extract_imports(self):
         imports = []

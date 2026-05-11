@@ -1,3 +1,5 @@
+# pipeline/structure/storage/sqlite_store.py
+
 import sqlite3
 from pathlib import Path
 import os

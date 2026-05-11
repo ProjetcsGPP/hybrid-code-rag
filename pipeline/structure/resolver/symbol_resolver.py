@@ -1,3 +1,5 @@
+# pipeline/structure/resolver/symbol_resolver.py
+
 from pipeline.contracts import Symbol
 
 

@@ -1,3 +1,5 @@
+# pipeline/structure/structural_indexer.py
+
 from pipeline.structure.symbol_extractor import SymbolExtractor
 from pipeline.structure.relationship_extractor import RelationshipExtractor
 from pipeline.structure.storage.sqlite_store import SQLiteStructuralStore
@@ -27,6 +29,9 @@ class StructuralIndexer:
 
         for chunk in chunks:
 
+            print("\nRAW CALLS:", chunk["metadata"].get("calls"))
+            print("CHUNK:", chunk["metadata"].get("chunk_id"))
+            
             symbol = self.symbol_extractor.extract(chunk)
 
             self.store.save_symbol(symbol)
@@ -35,6 +40,7 @@ class StructuralIndexer:
             symbols.append(symbol)
 
             self._symbol_index.add(symbol)
+            
 
         return symbols
 
@@ -43,11 +49,6 @@ class StructuralIndexer:
         relationships = []
 
         for symbol in self._symbols_buffer:
-
-            # resolve calls (opcional, mas mantido)
-            if symbol.calls:
-                resolved = self._resolver.resolve_calls(symbol.calls, symbol)
-                symbol.calls = [s.name for s in resolved if s]
 
             rels = self.relationship_extractor.extract(
                 symbol,
