@@ -9,11 +9,13 @@ class SymbolExtractor:
 
         metadata = chunk["metadata"]
 
-        calls = metadata.get("calls", None)
+        calls = metadata.get("calls") or []
+        imports = metadata.get("imports_context") or []
 
         return Symbol(
             symbol_id=metadata["chunk_id"],
             symbol_path=metadata.get("symbol_path", ""),
+            canonical_name=metadata.get("symbol_path", ""),
             name=metadata.get("name", ""),
             symbol_type=metadata.get("type", "unknown"),
             module_name=metadata.get("module_name", ""),
@@ -22,5 +24,6 @@ class SymbolExtractor:
             semantic_type=metadata.get("semantic_type", "general"),
             start_line=int(metadata.get("start_line", 0)),
             end_line=int(metadata.get("end_line", 0)),
-            calls=calls,   # 🔥 AGORA SIM
+            calls=calls,
+            imports=imports,
         )

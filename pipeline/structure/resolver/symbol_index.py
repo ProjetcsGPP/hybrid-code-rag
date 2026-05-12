@@ -8,12 +8,59 @@ class SymbolIndex:
 
     def __init__(self):
         self.by_id: Dict[str, Symbol] = {}
+
         self.by_name: Dict[str, List[Symbol]] = {}
 
+        self.by_module: Dict[str, List[Symbol]] = {}
+
+        self.by_class: Dict[str, List[Symbol]] = {}
+
+        self.by_canonical_name: Dict[str, Symbol] = {}
+
     def add(self, symbol: Symbol):
+
+        # -----------------------------------
+        # PRIMARY STORAGE
+        # -----------------------------------
+
         self.by_id[symbol.symbol_id] = symbol
 
-        self.by_name.setdefault(symbol.name, []).append(symbol)
+        # -----------------------------------
+        # NAME INDEX
+        # -----------------------------------
+
+        self.by_name.setdefault(
+            symbol.name,
+            []
+        ).append(symbol)
+
+        # -----------------------------------
+        # MODULE INDEX
+        # -----------------------------------
+
+        self.by_module.setdefault(
+            symbol.module_name,
+            []
+        ).append(symbol)
+
+        # -----------------------------------
+        # CLASS INDEX
+        # -----------------------------------
+
+        if symbol.parent_symbol_id:
+
+            self.by_class.setdefault(
+                symbol.parent_symbol_id,
+                []
+            ).append(symbol)
+
+        # -----------------------------------
+        # CANONICAL INDEX
+        # -----------------------------------
+
+        self.by_canonical_name[
+            symbol.canonical_name
+        ] = symbol
 
     def get(self, symbol_id: str):
         return self.by_id.get(symbol_id)
@@ -26,6 +73,32 @@ class SymbolIndex:
             if sid.endswith(suffix):
                 return sym
         return None
+
+    def get_by_canonical_name(
+        self,
+        canonical_name: str,
+    ):
+        return self.by_canonical_name.get(
+            canonical_name
+        )
+
+    def get_module_symbols(
+        self,
+        module_name: str,
+    ):
+        return self.by_module.get(
+            module_name,
+            []
+        )
+
+    def get_class_symbols(
+        self,
+        class_symbol_id: str,
+    ):
+        return self.by_class.get(
+            class_symbol_id,
+            []
+        )
 
     def resolve_best(self, call: str, context=None):
         candidates = self.by_name.get(call, [])

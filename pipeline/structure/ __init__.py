@@ -1,3 +1,5 @@
+# pipeline/structure/ __init__.py
+
 from pipeline.structure.symbol_extractor import (
     SymbolExtractor,
 )

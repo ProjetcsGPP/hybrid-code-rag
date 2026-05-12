@@ -10,6 +10,8 @@ def test_indexer(file_path: str):
     chunks = chunker.chunk()
 
     store = SQLiteStructuralStore()
+    
+    store.reset()
 
     indexer = StructuralIndexer(store)
 

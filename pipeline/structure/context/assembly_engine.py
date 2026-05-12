@@ -1,3 +1,5 @@
+#  pipeline/structure/context/assembly_engine.py
+
 from pipeline.structure.structural_query import StructuralQuery
 
 

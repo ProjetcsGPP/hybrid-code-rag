@@ -74,6 +74,7 @@ class SQLiteStructuralStore:
                 symbol_id TEXT PRIMARY KEY,
 
                 symbol_path TEXT,
+                canonical_name TEXT,
                 name TEXT,
 
                 symbol_type TEXT,
@@ -177,6 +178,7 @@ class SQLiteStructuralStore:
                 symbol_id,
 
                 symbol_path,
+                canonical_name,
                 name,
 
                 symbol_type,
@@ -191,12 +193,13 @@ class SQLiteStructuralStore:
                 start_line,
                 end_line
 
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 symbol.symbol_id,
 
                 symbol.symbol_path,
+                symbol.canonical_name,
                 symbol.name,
 
                 symbol.symbol_type,
@@ -303,3 +306,40 @@ class SQLiteStructuralStore:
 
         if self.conn:
             self.conn.close()
+    
+    
+    # -------------------------------------------------
+    # GRAPH STATS
+    # -------------------------------------------------
+
+    def get_graph_stats(self):
+
+        cursor = self.conn.cursor()
+
+        nodes = cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM symbols
+            """
+        ).fetchone()[0]
+
+        edges = cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM relationships
+            """
+        ).fetchone()[0]
+
+        unresolved = cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM relationships
+            WHERE target_symbol_id IS NULL
+            """
+        ).fetchone()[0]
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "unresolved": unresolved,
+        }

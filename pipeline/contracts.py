@@ -1,8 +1,34 @@
 # pipeline/contracts.py
 
-from typing import TypedDict, List, Optional
+from dataclasses import dataclass
+from typing import TypedDict, List, Optional, Literal
 
 
+EdgeType = Literal[
+    "CALLS_METHOD",
+    "CALLS_SELF",
+    "CALLS_SUPER",
+    "CALLS_ORM",
+    "CALLS_FUNCTION",
+    "CALLS_EXTERNAL"
+]
+
+
+@dataclass
+class GraphEdge:
+    edge_id: str
+
+    source_symbol_id: str
+    target_symbol_id: Optional[str]
+
+    edge_type: EdgeType
+
+    raw_call: str
+
+    confidence: float = 0.0
+
+    semantic: Optional["SemanticCallTarget"] = None
+    
 class ChunkMeta(TypedDict, total=False):
     type: str
     name: str
@@ -37,7 +63,8 @@ class Symbol:
     def __init__(
         self,
         symbol_id: str,
-        symbol_path: str,
+        symbol_path: str,        
+        canonical_name: str,
         name: str,
         symbol_type: str,
         module_name: str,
@@ -47,9 +74,11 @@ class Symbol:
         start_line: int,
         end_line: int,
         calls: Optional[List[str]] = None,
+        imports: Optional[List[dict]] = None,
     ):
         self.symbol_id = symbol_id
         self.symbol_path = symbol_path
+        self.canonical_name = canonical_name
         self.name = name
         self.symbol_type = symbol_type
         self.module_name = module_name
@@ -60,6 +89,7 @@ class Symbol:
         self.end_line = end_line
 
         self.calls = calls or []
+        self.imports = imports or []
 
     def __repr__(self):
         return (

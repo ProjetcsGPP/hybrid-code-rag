@@ -1,12 +1,5 @@
 # pipeline/ast_chunker.py
 
-# Este módulo define a classe ASTChunker, que é responsável por analisar um arquivo Python 
-# usando a biblioteca ast e extrair "chunks" de código representando classes e funções. 
-# Cada chunk inclui metadados detalhados, como tipo, nome, caminho simbólico, tipo semântico 
-# inferido, score de importância, hierarquia AST e contexto de imports. O objetivo é criar 
-# uma representação estruturada do código para facilitar análises posteriores, como 
-# identificação de dependências e relações semânticas entre os componentes do código.
-
 import ast
 import logging
 from pathlib import Path
@@ -24,12 +17,21 @@ class ASTChunker:
 
         self.imports_context = self._extract_imports()
 
+        # debug leve (opcional)
+        logger.debug(
+            "ASTChunker initialized | file=%s | imports=%s",
+            self.file_path,
+            len(self.imports_context),
+        )
+
     def chunk(self):
         chunks = []
 
         for node in self.tree.body:
 
-            # classes
+            # -------------------------
+            # CLASSES
+            # -------------------------
             if isinstance(node, ast.ClassDef):
 
                 if self._is_noise(node, node.name):
@@ -44,6 +46,7 @@ class ASTChunker:
                 )
 
                 chunks.append(class_chunk)
+                #print("DEBUG CHUNK RAW - CLASS:", class_chunk)
 
                 class_chunk_id = class_chunk["metadata"]["chunk_id"]
 
@@ -62,9 +65,7 @@ class ASTChunker:
                     if self._is_noise(child, child.name):
                         continue
 
-                    siblings = [
-                        m for m in class_methods if m != child.name
-                    ]
+                    siblings = [m for m in class_methods if m != child.name]
 
                     method_chunk = self._build_chunk(
                         node=child,
@@ -75,8 +76,11 @@ class ASTChunker:
                     )
 
                     chunks.append(method_chunk)
+                    #print("DEBUG CHUNK RAW - METHOD:", method_chunk)
 
-            # funções globais
+            # -------------------------
+            # GLOBAL FUNCTIONS
+            # -------------------------
             elif isinstance(node, ast.FunctionDef):
 
                 if self._is_noise(node, node.name):
@@ -91,79 +95,66 @@ class ASTChunker:
                 )
 
                 chunks.append(function_chunk)
+                #print("DEBUG CHUNK RAW - FUNCTION:", function_chunk)
 
         return chunks
 
-    # -----------------------------
+    # =========================
     # AST helpers
-    # -----------------------------
+    # =========================
+
+    def _is_django_noise(self, call: str) -> bool:
+        return (
+            call.startswith("models.")
+            or call.startswith("django.")
+            or call.endswith("Field")
+            or call.endswith("Constraint")
+            or call.endswith("Index")
+        )
 
     def _extract_calls(self, node):
-
         calls = []
 
-        # -------------------------------------------------
-        # CLASS CHUNK:
-        # NÃO entra em métodos internos
-        # -------------------------------------------------
-
         if isinstance(node, ast.ClassDef):
-
             nodes_to_scan = []
 
             for child in node.body:
-
-                # ignora métodos da classe
                 if isinstance(child, ast.FunctionDef):
                     continue
-
                 nodes_to_scan.extend(ast.walk(child))
-
         else:
             nodes_to_scan = ast.walk(node)
 
         for child in nodes_to_scan:
-
             if not isinstance(child, ast.Call):
                 continue
 
-            call_name = self._resolve_call_name(child.func)
+            raw_call = self._resolve_call_name(child.func)
 
-            if call_name:
-                calls.append(call_name)
+            if raw_call and not self._is_django_noise(raw_call):
+                calls.append(raw_call)
 
         return list(set(calls))
 
-
     def _resolve_call_name(self, node):
-
-        # foo()
         if isinstance(node, ast.Name):
             return node.id
 
-        # obj.method()
         if isinstance(node, ast.Attribute):
-
             parts = []
-
             current = node
 
             while isinstance(current, ast.Attribute):
                 parts.append(current.attr)
                 current = current.value
 
-            # self.method()
             if isinstance(current, ast.Name):
                 parts.append(current.id)
-
-            # super().method()
             elif isinstance(current, ast.Call):
-
                 if isinstance(current.func, ast.Name):
                     parts.append(current.func.id)
 
             parts.reverse()
-
             return ".".join(parts)
 
         return None
@@ -175,27 +166,41 @@ class ASTChunker:
 
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    imports.append(alias.name)
+                    module_name = alias.name
+
+                    imports.append({
+                        "type": "import",
+                        "module": module_name,
+                        "imported": None,
+                        "alias": alias.asname,
+                        "local_name": alias.asname or module_name.split(".")[0],
+                    })
 
             elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    imports.append(node.module)
+                if not node.module:
+                    continue
 
-        return sorted(list(set(imports)))
+                for alias in node.names:
+                    imports.append({
+                        "type": "from",
+                        "module": node.module,
+                        "imported": alias.name,
+                        "alias": alias.asname,
+                        "local_name": alias.asname or alias.name,
+                    })
+
+        return imports
 
     def _extract_decorators(self, node):
         decorators = []
 
         for dec in getattr(node, "decorator_list", []):
-
             if isinstance(dec, ast.Name):
                 decorators.append(dec.id)
 
             elif isinstance(dec, ast.Call):
-
                 if isinstance(dec.func, ast.Name):
                     decorators.append(dec.func.id)
-
                 elif isinstance(dec.func, ast.Attribute):
                     decorators.append(dec.func.attr)
 
@@ -204,9 +209,9 @@ class ASTChunker:
 
         return decorators
 
-    # -----------------------------
+    # =========================
     # Structure helpers
-    # -----------------------------
+    # =========================
 
     def _build_hierarchy_path(self, node_type, parent_class, name):
         path = [f"Module({self.module_name})"]
@@ -254,9 +259,9 @@ class ASTChunker:
 
         return False
 
-    # -----------------------------
+    # =========================
     # Semantic layer
-    # -----------------------------
+    # =========================
 
     def _infer_semantic(self, name: str) -> str:
         name_lower = name.lower()
@@ -267,10 +272,7 @@ class ASTChunker:
         if any(k in name_lower for k in ["auth", "permission", "role"]):
             return "authorization"
 
-        if any(
-            k in name_lower
-            for k in ["create", "save", "insert", "update", "delete"]
-        ):
+        if any(k in name_lower for k in ["create", "save", "insert", "update", "delete"]):
             return "mutation"
 
         if any(k in name_lower for k in ["get", "fetch", "list", "query"]):
@@ -301,9 +303,9 @@ class ASTChunker:
 
         return float(score)
 
-    # -----------------------------
+    # =========================
     # Chunk builder
-    # -----------------------------
+    # =========================
 
     def _build_chunk(
         self,
@@ -317,7 +319,7 @@ class ASTChunker:
         end_line = getattr(node, "end_lineno", start_line + 1)
 
         source_lines = self.source.splitlines()
-        code = "\n".join(source_lines[start_line - 1 : end_line])
+        code = "\n".join(source_lines[start_line - 1:end_line])
 
         name = getattr(node, "name", "") or ""
 

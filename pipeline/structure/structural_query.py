@@ -1,3 +1,5 @@
+# pipeline/structure/structural_query.py
+
 from pipeline.structure.storage.sqlite_store import SQLiteStructuralStore
 
 

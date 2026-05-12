@@ -1,3 +1,5 @@
+# pipeline/structure/context/test_run.py
+
 from pipeline.structure.context.assembly_engine import ContextAssemblyEngine
 from pipeline.structure.structural_query import StructuralQuery
 from pipeline.structure.storage.sqlite_store import SQLiteStructuralStore
