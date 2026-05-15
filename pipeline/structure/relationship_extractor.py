@@ -1,183 +1,279 @@
 # pipeline/structure/relationship_extractor.py
 
 from pipeline.contracts import Relationship, Symbol
-from pipeline.structure.resolver.symbol_index import SymbolIndex
-from pipeline.structure.models.callsite import CallSite
-from pipeline.structure.resolver.symbol_resolver import SymbolResolver
+from pipeline.structure.models.semantic_reference import SemanticReference
 from pipeline.structure.resolver.call_normalizer import CallNormalizer
-
-from pipeline.structure.resolver.semantic_call_resolver import SemanticCallResolver
-from pipeline.structure.resolver.semantic_call import SemanticCallTarget
 
 
 class RelationshipExtractor:
 
+    BUILTIN_METHODS = {
+        "upper",
+        "lower",
+        "strip",
+        "split",
+        "join",
+        "replace",
+        "format",
+        "exists",
+        "exclude",
+        "filter",
+        "all",
+        "first",
+        "last",
+        "count",
+    }
+
+    BUILTIN_OWNERS = {
+        "str",
+        "int",
+        "float",
+        "dict",
+        "list",
+        "set",
+        "tuple",
+    }
+
+    STDLIB_OWNERS = {
+        "datetime",
+        "json",
+        "pathlib",
+        "os",
+        "re",
+        "typing",
+        "timezone",
+    }
+
     def __init__(self, symbol_index):
+
         self.normalizer = CallNormalizer()
-        self.semantic_resolver = SemanticCallResolver(symbol_index)
 
-    def _map_edge_type(self, call_type: str):
+        print("\nREL EXTRACTOR INIT")
+        print("SYMBOL INDEX ID:", id(symbol_index))
 
-        if call_type == "SELF_METHOD":
-            return "CALLS_SELF"
+        self.symbol_index = symbol_index
+        if self.symbol_index is None:
+            raise ValueError("SymbolIndex must be provided " "(no fallback allowed)")
 
-        if call_type == "SUPER_METHOD":
-            return "CALLS_SUPER"
-
-        if call_type in ("ORM_MANAGER", "django_manager"):
-            return "CALLS_ORM"
-
-        if call_type == "EXTERNAL":
-            return "CALLS_EXTERNAL"
-
-        return "CALLS_METHOD"
+    # ---------------------------------------------------------
+    # PUBLIC
+    # ---------------------------------------------------------
 
     def extract(
         self,
         symbol: Symbol,
-        symbol_index: SymbolIndex,
-        resolver: SymbolResolver,
-    ) -> list[Relationship]:
+        symbol_index,
+        resolver,
+    ):
 
-        relationships: list[Relationship] = []
+        relationships = []
+        references = []
 
-        # ---------------------------
+        # -----------------------------------------------------
         # BELONGS_TO
-        # ---------------------------
+        # -----------------------------------------------------
+
         if symbol.parent_symbol_id:
+
             relationships.append(
                 Relationship(
-                    relationship_id=f"belongs_to::{symbol.symbol_id}::{symbol.parent_symbol_id}",
+                    relationship_id=(
+                        f"belongs_to::"
+                        f"{symbol.symbol_id}::"
+                        f"{symbol.parent_symbol_id}"
+                    ),
                     source_symbol_id=symbol.symbol_id,
                     target_symbol_id=symbol.parent_symbol_id,
                     relationship_type="BELONGS_TO",
                 )
             )
 
-        # ---------------------------
+        # -----------------------------------------------------
         # CALLS
-        # ---------------------------
-        if symbol.calls:
+        # -----------------------------------------------------
 
-            for call in symbol.calls:
+        for raw_call in symbol.calls:
 
-                # ✅ NORMALIZAÇÃO CENTRALIZADA
-                normalized = self.normalizer.normalize(call, symbol)
+            callsite = self.normalizer.build_callsite(raw_call)
 
-                if not normalized:
-                    continue
+            # -------------------------------------------------
+            # IGNORA BUILTINS
+            # -------------------------------------------------
 
-                callsite = self.build_callsite(normalized)
+            if callsite.method in self.BUILTIN_METHODS:
+                continue
 
-                semantic = self.semantic_resolver.resolve(
-                    callsite,
-                    symbol
-                )
+            # -------------------------------------------------
+            # SELF METHOD
+            # -------------------------------------------------
 
-                target = semantic.resolved_symbol
+            if callsite.call_type in ("self_method", "super_method"):
 
-                # -----------------------------------
-                # UNRESOLVED EDGE (NÃO DESCARTA)
-                # -----------------------------------
+                if callsite.call_type == "super_method":
+                    target = self._resolve_super_method(symbol, callsite.method)
+                else:
+                    target = self._resolve_self_method(symbol, callsite.method)
+                if target:
 
-                if not target:
+                    if target.symbol_id != symbol.symbol_id:
+
+                        relationships.append(
+                            Relationship(
+                                relationship_id=(
+                                    f"calls_internal::"
+                                    f"{symbol.symbol_id}::"
+                                    f"{target.symbol_id}"
+                                ),
+                                source_symbol_id=symbol.symbol_id,
+                                target_symbol_id=target.symbol_id,
+                                relationship_type="CALLS_INTERNAL",
+                                confidence=1.0,
+                            )
+                        )
+
+                continue
+
+            # -------------------------------------------------
+            # LOCAL MODULE FUNCTION
+            # -------------------------------------------------
+
+            local_function = self._resolve_local_function(
+                symbol,
+                callsite.method,
+            )
+
+            if local_function:
+
+                if local_function.symbol_id != symbol.symbol_id:
 
                     relationships.append(
                         Relationship(
                             relationship_id=(
-                                f"calls::{symbol.symbol_id}"
-                                f"::unresolved::{normalized}"
+                                f"calls_function::"
+                                f"{symbol.symbol_id}::"
+                                f"{local_function.symbol_id}"
                             ),
                             source_symbol_id=symbol.symbol_id,
-                            target_symbol_id=None,
-                            relationship_type="CALLS_UNRESOLVED",
-                            confidence=0.2,
+                            target_symbol_id=local_function.symbol_id,
+                            relationship_type="CALLS_FUNCTION",
+                            confidence=0.9,
                         )
                     )
 
-                    continue
+                continue
 
-                # -----------------------------------
-                # SELF LOOP
-                # -----------------------------------
+            # -------------------------------------------------
+            # EXTERNAL / FRAMEWORK / STDLIB
+            # -------------------------------------------------
 
-                if target.symbol_id == symbol.symbol_id:
-                    continue
-
-                # -----------------------------------
-                # DJANGO NOISE FILTER
-                # -----------------------------------
-
-                if target.symbol_path.startswith("models."):
-                    continue
-
-                edge_type = self._map_edge_type(
-                    semantic.call_type
+            references.append(
+                self._build_reference(
+                    symbol,
+                    callsite,
                 )
-
-                relationships.append(
-                    Relationship(
-                        relationship_id=(
-                            f"calls::{symbol.symbol_id}"
-                            f"::{target.symbol_id}"
-                        ),
-                        source_symbol_id=symbol.symbol_id,
-                        target_symbol_id=target.symbol_id,
-                        relationship_type=edge_type,
-                        confidence=semantic.confidence,
-                    )
-                )                
-
-        return relationships
-
-    def build_callsite(self, raw: str) -> CallSite:
-
-        parts = raw.split(".")
-
-        if len(parts) == 1:
-            return CallSite(
-                raw=raw,
-                owner=None,
-                method=parts[0],
-                chain=[],
-                call_type="function"
             )
 
-        owner = parts[0]
-        method = parts[-1]
-        chain = parts[1:]
+        return relationships, references
 
-        if owner == "self":
-            return CallSite(
-                raw=raw,
-                owner=owner,
-                method=method,
-                chain=chain,
-                call_type="self_method"
-            )
+    # ---------------------------------------------------------
+    # SELF METHODS
+    # ---------------------------------------------------------
 
-        if owner == "super":
-            return CallSite(
-                raw=raw,
-                owner=owner,
-                method=method,
-                chain=chain,
-                call_type="super_method"
-            )
-            
-        if "objects" in parts:
-            return CallSite(
-                raw=raw,
-                owner=owner,
-                method=method,
-                chain=chain,
-                call_type="django_manager"
-            )
+    def _resolve_self_method(
+        self,
+        context_symbol,
+        method_name,
+    ):
 
-        return CallSite(
-            raw=raw,
-            owner=owner,
-            method=method,
-            chain=chain,
-            call_type="method"
+        print("SELF METHOD RESOLVE:")
+        print("CONTEXT:", context_symbol.symbol_id)
+        print("PARENT:", context_symbol.parent_symbol_id)
+        print("SEARCH:", method_name)
+        print("CURRENT INDEX ID:", id(self.symbol_index))
+
+        if not context_symbol.parent_symbol_id:
+            return None
+
+        # 🔥 USA RESOLVER DE HIERARQUIA (FONTE ÚNICA)
+        target = self.symbol_index.find_method_in_hierarchy(
+            context_symbol.parent_symbol_id,
+            method_name,
+        )
+
+        print("RETURNED IN _resolve_self_method TARGET:", target)
+
+        return target
+
+    def _resolve_super_method(self, context_symbol, method_name):
+
+        if not context_symbol.parent_symbol_id:
+            return None
+
+        # por enquanto: fallback simples
+        # TODO: depois mapear MRO corretamente
+
+        # class_symbols = self.symbol_index.get_class_symbols(
+        #     context_symbol.parent_symbol_id
+        # )
+        #
+        # for symbol in class_symbols:
+        #     if symbol.name == method_name:
+        #         return symbol
+
+        target = self.symbol_index.find_method_in_hierarchy(
+            context_symbol.parent_symbol_id,
+            method_name,
+        )
+        print("RETURNED IN _resolve_super_method TARGET:", target)
+
+        return target
+
+    # ---------------------------------------------------------
+    # LOCAL FUNCTIONS
+    # ---------------------------------------------------------
+    def _resolve_local_function(
+        self,
+        context_symbol,
+        function_name,
+    ):
+
+        return self.symbol_index.find_local_function(
+            context_symbol.module_name,
+            function_name,
+        )
+
+    # ---------------------------------------------------------
+    # SEMANTIC REFERENCES
+    # ---------------------------------------------------------
+    def _build_reference(
+        self,
+        symbol,
+        callsite,
+    ):
+
+        ref_type = "EXTERNAL_REFERENCE"
+
+        if callsite.call_type == "self_method":
+            ref_type = "INTERNAL_REFERENCE"
+
+        elif callsite.call_type == "super_method":
+            ref_type = "SUPER_REFERENCE"
+
+        elif callsite.owner in self.BUILTIN_OWNERS:
+            ref_type = "BUILTIN_REFERENCE"
+
+        elif callsite.owner in self.STDLIB_OWNERS:
+            ref_type = "STDLIB_REFERENCE"
+
+        elif callsite.owner == "models":
+            ref_type = "FRAMEWORK_REFERENCE"
+
+        return SemanticReference(
+            reference_id=(f"semantic_ref::" f"{symbol.symbol_id}::" f"{callsite.raw}"),
+            source_symbol_id=symbol.symbol_id,
+            reference_type=ref_type,
+            raw_call=callsite.raw,
+            owner=callsite.owner,
+            method=callsite.method,
+            confidence=0.5,
         )

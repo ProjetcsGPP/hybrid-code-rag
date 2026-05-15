@@ -1,4 +1,7 @@
+# pipeline/test_structural_runtime.py
+
 from pipeline.ast_chunker import ASTChunker
+from pipeline.structure.resolver.symbol_index import SymbolIndex
 
 from pipeline.structure import (
     SymbolExtractor,
@@ -9,48 +12,33 @@ from pipeline.structure import (
 def test_structural_runtime(file_path: str):
 
     chunker = ASTChunker(file_path)
-
     chunks = chunker.chunk()
+
+    symbol_index = SymbolIndex()
 
     symbol_extractor = SymbolExtractor()
 
-    relationship_extractor = (
-        RelationshipExtractor()
-    )
+    relationship_extractor = RelationshipExtractor(symbol_index)
 
     symbols = []
-
     relationships = []
 
     for chunk in chunks:
 
-        symbol = symbol_extractor.extract(
-            chunk
-        )
+        symbol = symbol_extractor.extract(chunk)
 
         symbols.append(symbol)
 
-        rels = relationship_extractor.extract(
-            symbol
-        )
+        symbol_index.add(symbol)   # 🔴 ESSENCIAL
+
+        rels, _ = relationship_extractor.extract(symbol, symbol_index)
 
         relationships.extend(rels)
 
-    print()
-    print("================ SYMBOLS ================")
-
+    print("\n================ SYMBOLS ================")
     for s in symbols:
         print(s)
 
-    print()
-    print("============ RELATIONSHIPS =============")
-
+    print("\n============ RELATIONSHIPS =============")
     for r in relationships:
         print(r)
-
-
-if __name__ == "__main__":
-
-    test_structural_runtime(
-        "/home/gppusrubuntu/projects/backend/apps/accounts/models.py"
-    )

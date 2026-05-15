@@ -3,6 +3,7 @@
 from pipeline.contracts import Symbol
 from pipeline.structure.models.callsite import CallSite
 from pipeline.structure.resolver.scoring import ResolutionScorer
+from pipeline.structure.resolver.call_resolver import CallResolver
 
 
 class SymbolResolver:
@@ -10,6 +11,7 @@ class SymbolResolver:
     def __init__(self, symbol_index: "SymbolIndex"):
         self.index = symbol_index
         self.scorer = ResolutionScorer()
+        self.call_resolver = CallResolver(symbol_index)
 
     def resolve_calls(
         self,
@@ -28,27 +30,31 @@ class SymbolResolver:
 
     def _resolve_single(self, call, context_symbol):
 
-        search_name = None
+        # -------------------------------------------------
+        # CALLSITE STRUCTURED RESOLUTION
+        # -------------------------------------------------
 
-        # -----------------------------
-        # NORMALIZAÇÃO DA CHAMADA
-        # -----------------------------
         if hasattr(call, "call_type"):
 
-            if call.call_type == "self_method":
-                search_name = call.method
+            resolution = self.call_resolver.resolve(
+                call,
+                context_symbol,
+            )
 
-            elif call.call_type == "super_method":
-                search_name = call.method
+            target = resolution.get("target")
 
-            elif call.call_type == "django_manager":
-                return None  # bloqueio total ORM
+            if target:
+                return target
 
-            else:
-                search_name = call.raw
+            # chamadas estruturadas sem target
+            # NÃO devem cair no resolver global
+            return None
 
-        else:
-            search_name = call
+        # -------------------------------------------------
+        # FALLBACK LEGADO (strings simples)
+        # -------------------------------------------------
+
+        search_name = call
 
         candidates = self.index.search(search_name)
 
@@ -58,6 +64,7 @@ class SymbolResolver:
         # -----------------------------
         # FILTRO DE RUÍDO GLOBAL
         # -----------------------------
+
         candidates = [
             c for c in candidates
             if not c.symbol_path.startswith("models.")
@@ -68,11 +75,13 @@ class SymbolResolver:
             return None
 
         # -----------------------------
-        # BOOST HEURÍSTICO (NÃO SHORT-CIRCUIT)
+        # BOOST HEURÍSTICO
         # -----------------------------
+
         boosts = {}
 
         for c in candidates:
+
             boosts[c.symbol_id] = 0.0
 
             # mesma classe
@@ -88,33 +97,48 @@ class SymbolResolver:
                 boosts[c.symbol_id] += 0.1
 
         # -----------------------------
-        # fallback cross-file boost
+        # CROSS FILE PENALTY
         # -----------------------------
 
         if candidates and context_symbol:
 
             for c in candidates:
+
                 if c.module_name != context_symbol.module_name:
+
                     boosts[c.symbol_id] = max(
                         boosts[c.symbol_id] - 0.2,
                         -0.5
                     )
-                    
+
         # -----------------------------
-        # SCORING FINAL (ÁRBITRO)
+        # FINAL SCORING
         # -----------------------------
+
         scored = []
 
         for c in candidates:
 
-            base_score = self.scorer.score(c, search_name, context_symbol)
-            final_score = base_score + boosts.get(c.symbol_id, 0.0)
+            base_score = self.scorer.score(
+                c,
+                search_name,
+                context_symbol,
+            )
+
+            final_score = (
+                base_score +
+                boosts.get(c.symbol_id, 0.0)
+            )
 
             scored.append((final_score, c))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
+        scored.sort(
+            key=lambda x: x[0],
+            reverse=True,
+        )
 
         return scored[0][1] if scored else None
+
 
     def explain(self, call: str):
         return {

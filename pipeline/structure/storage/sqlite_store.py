@@ -113,6 +113,31 @@ class SQLiteStructuralStore:
         )
 
         # =============================================
+        # SEMANTIC REFERENCES
+        # =============================================
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS semantic_references (
+
+                reference_id TEXT PRIMARY KEY,
+
+                source_symbol_id TEXT,
+
+                reference_type TEXT,
+
+                raw_call TEXT,
+
+                owner TEXT,
+                method TEXT,
+
+                confidence REAL
+            )
+            """
+        )
+
+
+        # =============================================
         # INDEXES
         # =============================================
 
@@ -330,16 +355,83 @@ class SQLiteStructuralStore:
             """
         ).fetchone()[0]
 
-        unresolved = cursor.execute(
+        references = cursor.execute(
             """
             SELECT COUNT(*)
-            FROM relationships
-            WHERE target_symbol_id IS NULL
+            FROM semantic_references
             """
         ).fetchone()[0]
 
         return {
             "nodes": nodes,
             "edges": edges,
-            "unresolved": unresolved,
+            "references": references,
         }
+    
+    # -------------------------------------------------
+    # SEMANTIC REFERENCES
+    # -------------------------------------------------
+
+    def get_all_semantic_references(self):
+
+        cursor = self.conn.execute(
+            """
+            SELECT
+                reference_id,
+                source_symbol_id,
+                reference_type,
+                raw_call,
+                owner,
+                method,
+                confidence
+            FROM semantic_references
+            """
+        )
+
+        return cursor.fetchall()
+
+
+
+    def save_semantic_reference(
+        self,
+        reference,
+    ):
+
+        cursor = self.conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO semantic_references (
+
+                reference_id,
+
+                source_symbol_id,
+
+                reference_type,
+
+                raw_call,
+
+                owner,
+                method,
+
+                confidence
+
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                reference.reference_id,
+
+                reference.source_symbol_id,
+
+                reference.reference_type,
+
+                reference.raw_call,
+
+                reference.owner,
+                reference.method,
+
+                reference.confidence,
+            )
+        )
+
+        self.conn.commit()

@@ -126,36 +126,75 @@ class ASTChunker:
             nodes_to_scan = ast.walk(node)
 
         for child in nodes_to_scan:
+
             if not isinstance(child, ast.Call):
                 continue
 
-            raw_call = self._resolve_call_name(child.func)
+            # -----------------------------------
+            # ignora super() isolado
+            # -----------------------------------
 
-            if raw_call and not self._is_django_noise(raw_call):
+            if (
+                isinstance(child.func, ast.Name)
+                and child.func.id == "super"
+            ):
+                continue
+
+            raw_call = self._resolve_call_name(
+                child.func
+            )
+
+            if (
+                raw_call
+                and not self._is_django_noise(raw_call)
+            ):
                 calls.append(raw_call)
+
 
         return list(set(calls))
 
     def _resolve_call_name(self, node):
+
+        # -----------------------------------
+        # foo
+        # -----------------------------------
+
         if isinstance(node, ast.Name):
             return node.id
 
+        # -----------------------------------
+        # self.save
+        # timezone.now
+        # super().save
+        # -----------------------------------
+
         if isinstance(node, ast.Attribute):
-            parts = []
-            current = node
 
-            while isinstance(current, ast.Attribute):
-                parts.append(current.attr)
-                current = current.value
+            parent = self._resolve_call_name(
+                node.value
+            )
 
-            if isinstance(current, ast.Name):
-                parts.append(current.id)
-            elif isinstance(current, ast.Call):
-                if isinstance(current.func, ast.Name):
-                    parts.append(current.func.id)
+            if parent:
+                return f"{parent}.{node.attr}"
 
-            parts.reverse()
-            return ".".join(parts)
+            return node.attr
+
+        # -----------------------------------
+        # super()
+        # factory()
+        # -----------------------------------
+
+        if isinstance(node, ast.Call):
+
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "super"
+            ):
+                return "super"
+
+            return self._resolve_call_name(
+                node.func
+            )
 
         return None
 
@@ -208,6 +247,22 @@ class ASTChunker:
                 decorators.append(dec.attr)
 
         return decorators
+
+    def _extract_bases(self, node):
+        bases = []
+
+        if not isinstance(node, ast.ClassDef):
+            return bases
+
+        for base in node.bases:
+
+            resolved = self._resolve_call_name(base)
+
+            if resolved:
+                bases.append(resolved)
+
+        return bases
+
 
     # =========================
     # Structure helpers
@@ -324,8 +379,11 @@ class ASTChunker:
         name = getattr(node, "name", "") or ""
 
         semantic = self._infer_semantic(name)
+        
         decorators = self._extract_decorators(node)
-
+        
+        bases = self._extract_bases(node)
+        
         chunk_id = self._build_chunk_id(
             node_type=node_type,
             name=name,
@@ -364,6 +422,7 @@ class ASTChunker:
                 "module_name": self.module_name,
                 "ast_hierarchy_path": hierarchy_path,
                 "decorators": decorators,
+                "bases": bases,
                 "imports_context": self.imports_context,
                 "siblings": siblings or [],
                 "calls": self._extract_calls(node),
