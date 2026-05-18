@@ -1,5 +1,8 @@
 # pipeline/structure/resolver/call_normalizer.py
 
+from pipeline.structure.models.callsite import CallSite
+
+
 class CallNormalizer:
 
     INVALID_NAMESPACE_PREFIXES = (
@@ -15,9 +18,7 @@ class CallNormalizer:
         ".all",
     )
 
-    INVALID_CALL_PREFIXES = (
-        "ValidationError",
-    )
+    INVALID_CALL_PREFIXES = ("ValidationError",)
 
     DJANGO_FIELDS = (
         "CharField",
@@ -82,3 +83,83 @@ class CallNormalizer:
             return call
 
         return call
+
+    # ---------------------------------------------------------
+    # CALLSITE
+    # ---------------------------------------------------------
+
+    def build_callsite(self, raw: str):
+
+        parts = raw.split(".")
+        calltype = "unknown"
+
+        # -----------------------------------------
+        # function()
+        # -----------------------------------------
+
+        if len(parts) == 1:
+
+            calltype = "function"
+
+            return CallSite(
+                raw=raw,
+                owner=None,
+                method=parts[0],
+                chain=[],
+                normalized=raw,
+                call_type=calltype,
+            )
+
+        # -----------------------------------------
+        # self.method()
+        # -----------------------------------------
+
+        if parts[0] == "self":
+
+            # self.save()
+            if len(parts) == 2:
+                calltype = "self_method"
+
+            # self.attr.method()
+            else:
+                calltype = "attribute_method"
+
+            return CallSite(
+                raw=raw,
+                owner="self",
+                method=parts[-1],
+                chain=parts[1:-1],
+                normalized=f"self.{parts[-1]}",
+                call_type=calltype,
+            )
+
+        # -----------------------------------------
+        # super.method()
+        # -----------------------------------------
+
+        if parts[0] == "super":
+
+            calltype = "super_method"
+
+            return CallSite(
+                raw=raw,
+                owner="super",
+                method=parts[-1],
+                chain=parts[1:-1],
+                normalized=f"super.{parts[-1]}",
+                call_type=calltype,
+            )
+
+        # -----------------------------------------
+        # generic owner.method()
+        # -----------------------------------------
+        calltype = "method"
+
+        return CallSite(
+            raw=raw,
+            owner=parts[0],
+            method=parts[-1],
+            chain=parts[1:-1],
+            normalized=f"{parts[0]}.{parts[-1]}",
+            call_type=calltype,
+        )

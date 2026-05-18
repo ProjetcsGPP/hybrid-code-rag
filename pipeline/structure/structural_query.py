@@ -24,7 +24,7 @@ class StructuralQuery:
             SELECT * FROM symbols
             WHERE name = ?
             """,
-            (name,)
+            (name,),
         )
 
         return cursor.fetchall()
@@ -38,7 +38,7 @@ class StructuralQuery:
             SELECT * FROM symbols
             WHERE file_path = ?
             """,
-            (file_path,)
+            (file_path,),
         )
 
         return cursor.fetchall()
@@ -52,7 +52,7 @@ class StructuralQuery:
             SELECT * FROM symbols
             WHERE parent_symbol_id = ?
             """,
-            (parent_symbol_id,)
+            (parent_symbol_id,),
         )
 
         return cursor.fetchall()
@@ -83,11 +83,11 @@ class StructuralQuery:
                 symbol_id,
                 symbol_id,
                 relationship_type,
-            )
+            ),
         )
 
         return cursor.fetchall()
-    
+
     def get_parent(self, symbol_id: str):
 
         cursor = self.store.conn.cursor()
@@ -98,7 +98,7 @@ class StructuralQuery:
             FROM symbols
             WHERE symbol_id = ?
             """,
-            (symbol_id,)
+            (symbol_id,),
         )
 
         row = cursor.fetchone()

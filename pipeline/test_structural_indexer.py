@@ -10,7 +10,7 @@ def test_indexer(file_path: str):
     chunks = chunker.chunk()
 
     store = SQLiteStructuralStore()
-    
+
     store.reset()
 
     indexer = StructuralIndexer(store)
@@ -29,11 +29,14 @@ def test_indexer(file_path: str):
     for r in result["relationships"]:
         print(r)
 
+    print("\n============ REFERENCES ============")
+
+    for ref in result["semantic_references"]:
+        print(ref)
+
     store.close()
 
 
 if __name__ == "__main__":
 
-    test_indexer(
-        "/home/gppusrubuntu/projects/backend/apps/accounts/models.py"
-    )
+    test_indexer("/home/gppusrubuntu/projects/backend/apps/accounts/models.py")

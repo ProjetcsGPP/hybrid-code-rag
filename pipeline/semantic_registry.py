@@ -1,16 +1,15 @@
+# pipeline/semantic_registry.py
+
 from typing import Dict
 from typing import List
 
 import numpy as np
 
-
 DEFAULT_CONCEPTS = [
     {
         "concept_name": "authorization",
         "parent_concept": None,
-        "description": (
-            "Authentication and authorization logic"
-        ),
+        "description": ("Authentication and authorization logic"),
         "examples": [
             "jwt",
             "token",
@@ -24,9 +23,7 @@ DEFAULT_CONCEPTS = [
     {
         "concept_name": "validation",
         "parent_concept": None,
-        "description": (
-            "Input validation and data integrity"
-        ),
+        "description": ("Input validation and data integrity"),
         "examples": [
             "validate",
             "schema",
@@ -39,9 +36,7 @@ DEFAULT_CONCEPTS = [
     {
         "concept_name": "mutation",
         "parent_concept": None,
-        "description": (
-            "Data creation and update logic"
-        ),
+        "description": ("Data creation and update logic"),
         "examples": [
             "create",
             "update",
@@ -55,9 +50,7 @@ DEFAULT_CONCEPTS = [
     {
         "concept_name": "query",
         "parent_concept": None,
-        "description": (
-            "Read and query operations"
-        ),
+        "description": ("Read and query operations"),
         "examples": [
             "fetch",
             "get",
@@ -70,9 +63,7 @@ DEFAULT_CONCEPTS = [
     {
         "concept_name": "business_logic",
         "parent_concept": None,
-        "description": (
-            "Core business rules and workflows"
-        ),
+        "description": ("Core business rules and workflows"),
         "examples": [
             "service",
             "workflow",
@@ -88,9 +79,7 @@ DEFAULT_CONCEPTS = [
 class SemanticRegistry:
 
     def __init__(self, embedding_service):
-        self.embedding_service = (
-            embedding_service
-        )
+        self.embedding_service = embedding_service
 
         self.concepts: Dict = {}
 
@@ -101,26 +90,19 @@ class SemanticRegistry:
 
     def register_concept(self, concept):
 
-        concept_text = " ".join([
-            concept["concept_name"],
-            concept["description"],
-            " ".join(
-                concept["examples"]
-            ),
-        ])
-
-        embedding = (
-            self.embedding_service
-            .generate_concept_embedding(
-                concept_text
-            )
+        concept_text = " ".join(
+            [
+                concept["concept_name"],
+                concept["description"],
+                " ".join(concept["examples"]),
+            ]
         )
+
+        embedding = self.embedding_service.generate_concept_embedding(concept_text)
 
         concept["embedding"] = embedding
 
-        self.concepts[
-            concept["concept_name"]
-        ] = concept
+        self.concepts[concept["concept_name"]] = concept
 
     def cosine_similarity(
         self,
@@ -130,17 +112,12 @@ class SemanticRegistry:
         a = np.array(a)
         b = np.array(b)
 
-        denominator = (
-            np.linalg.norm(a)
-            * np.linalg.norm(b)
-        )
+        denominator = np.linalg.norm(a) * np.linalg.norm(b)
 
         if denominator == 0:
             return 0.0
 
-        return (
-            np.dot(a, b) / denominator
-        )
+        return np.dot(a, b) / denominator
 
     def find_similar_concepts(
         self,
@@ -160,13 +137,15 @@ class SemanticRegistry:
                 concept_data["embedding"],
             )
 
-            results.append({
-                "concept": concept_name,
-                "score": round(
-                    float(score),
-                    4,
-                ),
-            })
+            results.append(
+                {
+                    "concept": concept_name,
+                    "score": round(
+                        float(score),
+                        4,
+                    ),
+                }
+            )
 
         results.sort(
             key=lambda x: x["score"],
