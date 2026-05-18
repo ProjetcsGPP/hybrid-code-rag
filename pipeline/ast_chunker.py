@@ -46,7 +46,7 @@ class ASTChunker:
                 )
 
                 chunks.append(class_chunk)
-                #print("DEBUG CHUNK RAW - CLASS:", class_chunk)
+                # print("DEBUG CHUNK RAW - CLASS:", class_chunk)
 
                 class_chunk_id = class_chunk["metadata"]["chunk_id"]
 
@@ -76,7 +76,7 @@ class ASTChunker:
                     )
 
                     chunks.append(method_chunk)
-                    #print("DEBUG CHUNK RAW - METHOD:", method_chunk)
+                    # print("DEBUG CHUNK RAW - METHOD:", method_chunk)
 
             # -------------------------
             # GLOBAL FUNCTIONS
@@ -95,7 +95,7 @@ class ASTChunker:
                 )
 
                 chunks.append(function_chunk)
-                #print("DEBUG CHUNK RAW - FUNCTION:", function_chunk)
+                # print("DEBUG CHUNK RAW - FUNCTION:", function_chunk)
 
         return chunks
 
@@ -134,24 +134,134 @@ class ASTChunker:
             # ignora super() isolado
             # -----------------------------------
 
-            if (
-                isinstance(child.func, ast.Name)
-                and child.func.id == "super"
-            ):
+            if isinstance(child.func, ast.Name) and child.func.id == "super":
                 continue
 
-            raw_call = self._resolve_call_name(
-                child.func
-            )
+            raw_call = self._resolve_call_name(child.func)
 
-            if (
-                raw_call
-                and not self._is_django_noise(raw_call)
-            ):
+            if raw_call and not self._is_django_noise(raw_call):
                 calls.append(raw_call)
 
-
         return list(set(calls))
+
+    def _extract_assignments(self, node):
+
+        assignments = []
+        assignment_registry = {}
+
+        QUERYSET_CHAIN_METHODS = {
+            "filter",
+            "exclude",
+            "all",
+            "order_by",
+            "annotate",
+            "values",
+            "values_list",
+            "select_related",
+            "prefetch_related",
+        }
+
+        DJANGO_SCHEMA_TYPES = (
+            "Field",
+            "ForeignKey",
+            "OneToOneField",
+            "ManyToManyField",
+        )
+
+        for child in ast.walk(node):
+
+            # -----------------------------------
+            # qs = User.objects.filter(...)
+            # x = self.user
+            # -----------------------------------
+
+            if not isinstance(child, ast.Assign):
+                continue
+
+            if len(child.targets) != 1:
+                continue
+
+            target = child.targets[0]
+
+            if not isinstance(target, ast.Name):
+                continue
+
+            variable_name = target.id
+
+            source = self._resolve_call_name(child.value)
+
+            if not source:
+                continue
+
+            owner, method = self._split_call(source)
+
+            if source.startswith("models.") and source.endswith(DJANGO_SCHEMA_TYPES):
+                continue
+
+            semantic_type = self._infer_assignment_type(source)
+
+            assignment = {
+                "variable": variable_name,
+                "source": source,
+                "semantic_type": semantic_type,
+            }
+
+            # -------------------------------------------------
+            # QUERYSET PROPAGATION
+            # -------------------------------------------------
+
+            if owner in assignment_registry and method in QUERYSET_CHAIN_METHODS:
+
+                previous = assignment_registry[owner]
+
+                if previous.get("semantic_type") == "queryset":
+
+                    assignment["semantic_type"] = "queryset"
+
+                    if previous.get("model"):
+                        assignment["model"] = previous["model"]
+
+            # -----------------------------------
+            # ORM MODEL INFERENCE
+            # -----------------------------------
+
+            if ".objects." in source:
+
+                model_name = source.split(".objects.")[0]
+
+                assignment["model"] = model_name
+
+            assignment_registry[variable_name] = assignment
+
+            assignments.append(assignment)
+
+        return assignments
+
+    def _split_call(self, raw_call):
+
+        if "." not in raw_call:
+            return raw_call, None
+
+        parts = raw_call.split(".")
+
+        owner = ".".join(parts[:-1])
+
+        method = parts[-1]
+
+        return owner, method
+
+    def _infer_assignment_type(self, source: str):
+
+        if ".objects." in source:
+            return "queryset"
+
+        if source.startswith("self."):
+            return "attribute"
+
+        if source.startswith("super."):
+            return "super"
+
+        return "unknown"
 
     def _resolve_call_name(self, node):
 
@@ -170,9 +280,7 @@ class ASTChunker:
 
         if isinstance(node, ast.Attribute):
 
-            parent = self._resolve_call_name(
-                node.value
-            )
+            parent = self._resolve_call_name(node.value)
 
             if parent:
                 return f"{parent}.{node.attr}"
@@ -186,15 +294,10 @@ class ASTChunker:
 
         if isinstance(node, ast.Call):
 
-            if (
-                isinstance(node.func, ast.Name)
-                and node.func.id == "super"
-            ):
+            if isinstance(node.func, ast.Name) and node.func.id == "super":
                 return "super"
 
-            return self._resolve_call_name(
-                node.func
-            )
+            return self._resolve_call_name(node.func)
 
         return None
 
@@ -207,26 +310,30 @@ class ASTChunker:
                 for alias in node.names:
                     module_name = alias.name
 
-                    imports.append({
-                        "type": "import",
-                        "module": module_name,
-                        "imported": None,
-                        "alias": alias.asname,
-                        "local_name": alias.asname or module_name.split(".")[0],
-                    })
+                    imports.append(
+                        {
+                            "type": "import",
+                            "module": module_name,
+                            "imported": None,
+                            "alias": alias.asname,
+                            "local_name": alias.asname or module_name.split(".")[0],
+                        }
+                    )
 
             elif isinstance(node, ast.ImportFrom):
                 if not node.module:
                     continue
 
                 for alias in node.names:
-                    imports.append({
-                        "type": "from",
-                        "module": node.module,
-                        "imported": alias.name,
-                        "alias": alias.asname,
-                        "local_name": alias.asname or alias.name,
-                    })
+                    imports.append(
+                        {
+                            "type": "from",
+                            "module": node.module,
+                            "imported": alias.name,
+                            "alias": alias.asname,
+                            "local_name": alias.asname or alias.name,
+                        }
+                    )
 
         return imports
 
@@ -262,7 +369,6 @@ class ASTChunker:
                 bases.append(resolved)
 
         return bases
-
 
     # =========================
     # Structure helpers
@@ -327,7 +433,9 @@ class ASTChunker:
         if any(k in name_lower for k in ["auth", "permission", "role"]):
             return "authorization"
 
-        if any(k in name_lower for k in ["create", "save", "insert", "update", "delete"]):
+        if any(
+            k in name_lower for k in ["create", "save", "insert", "update", "delete"]
+        ):
             return "mutation"
 
         if any(k in name_lower for k in ["get", "fetch", "list", "query"]):
@@ -374,16 +482,18 @@ class ASTChunker:
         end_line = getattr(node, "end_lineno", start_line + 1)
 
         source_lines = self.source.splitlines()
-        code = "\n".join(source_lines[start_line - 1:end_line])
+        code = "\n".join(source_lines[start_line - 1 : end_line])
 
         name = getattr(node, "name", "") or ""
 
         semantic = self._infer_semantic(name)
-        
+
         decorators = self._extract_decorators(node)
-        
+
+        assignments = self._extract_assignments(node)
+
         bases = self._extract_bases(node)
-        
+
         chunk_id = self._build_chunk_id(
             node_type=node_type,
             name=name,
@@ -426,6 +536,7 @@ class ASTChunker:
                 "imports_context": self.imports_context,
                 "siblings": siblings or [],
                 "calls": self._extract_calls(node),
+                "assignments": assignments,
                 "semantic_matches": [],
                 "semantic_confidence": 0.0,
             },

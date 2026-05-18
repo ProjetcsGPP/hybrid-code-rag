@@ -19,6 +19,7 @@ class CallResolver:
         self,
         call: CallSite,
         context: Symbol,
+        variable_registry=None,
     ):
 
         # ---------------------------------------------
@@ -58,6 +59,48 @@ class CallResolver:
         # ---------------------------------------------
 
         if call.call_type == "attribute_method":
+
+            binding = None
+
+            if variable_registry:
+                binding = variable_registry.get(call.owner)
+
+            # -----------------------------------------
+            # QUERYSET
+            # -----------------------------------------
+
+            if binding and binding.semantic_type == "queryset":
+
+                return {
+                    "type": "QUERYSET",
+                    "target": None,
+                    "confidence": binding.confidence,
+                    "framework": "DJANGO",
+                }
+
+            # -----------------------------------------
+            # MODEL INSTANCE
+            # -----------------------------------------
+
+            if binding and binding.semantic_type == "model_instance":
+
+                class_symbol = self.index.resolve_class_by_name(binding.model_name)
+
+                target = None
+
+                if class_symbol:
+
+                    target = self.index.find_method_in_hierarchy(
+                        class_symbol.symbol_id,
+                        call.method,
+                    )
+
+                return {
+                    "type": "MODEL_METHOD",
+                    "target": target,
+                    "confidence": 0.9 if target else 0.4,
+                    "framework": "DJANGO",
+                }
 
             return {
                 "type": "RUNTIME",

@@ -1,8 +1,10 @@
 # pipeline/structure/relationship_extractor.py
 
 from pipeline.contracts import Relationship, Symbol
-from pipeline.structure.models.semantic_reference import SemanticReference
 from pipeline.structure.resolver.call_normalizer import CallNormalizer
+from pipeline.structure.semantic.relationship_semantic_mapper import (
+    RelationshipSemanticMapper,
+)
 
 
 class RelationshipExtractor:
@@ -67,7 +69,6 @@ class RelationshipExtractor:
     ):
 
         relationships = []
-        references = []
 
         # -----------------------------------------------------
         # BELONGS_TO
@@ -75,105 +76,23 @@ class RelationshipExtractor:
 
         if symbol.parent_symbol_id:
 
-            relationships.append(
-                Relationship(
-                    relationship_id=(
-                        f"belongs_to::"
-                        f"{symbol.symbol_id}::"
-                        f"{symbol.parent_symbol_id}"
-                    ),
-                    source_symbol_id=symbol.symbol_id,
-                    target_symbol_id=symbol.parent_symbol_id,
-                    relationship_type="BELONGS_TO",
-                )
+            rel = Relationship(
+                relationship_id=(
+                    f"belongs_to::" f"{symbol.symbol_id}::" f"{symbol.parent_symbol_id}"
+                ),
+                source_symbol_id=symbol.symbol_id,
+                target_symbol_id=symbol.parent_symbol_id,
+                relationship_type="BELONGS_TO",
             )
 
-        # -----------------------------------------------------
-        # CALLS
-        # -----------------------------------------------------
-
-        for raw_call in symbol.calls:
-
-            callsite = self.normalizer.build_callsite(raw_call)
-
-            # -------------------------------------------------
-            # IGNORA BUILTINS
-            # -------------------------------------------------
-
-            if callsite.method in self.BUILTIN_METHODS:
-                continue
-
-            # -------------------------------------------------
-            # SELF METHOD
-            # -------------------------------------------------
-
-            if callsite.call_type in ("self_method", "super_method"):
-
-                if callsite.call_type == "super_method":
-                    target = self._resolve_super_method(symbol, callsite.method)
-                else:
-                    target = self._resolve_self_method(symbol, callsite.method)
-                if target:
-
-                    if target.symbol_id != symbol.symbol_id:
-
-                        relationships.append(
-                            Relationship(
-                                relationship_id=(
-                                    f"calls_internal::"
-                                    f"{symbol.symbol_id}::"
-                                    f"{target.symbol_id}"
-                                ),
-                                source_symbol_id=symbol.symbol_id,
-                                target_symbol_id=target.symbol_id,
-                                relationship_type="CALLS_INTERNAL",
-                                confidence=1.0,
-                            )
-                        )
-
-                continue
-
-            # -------------------------------------------------
-            # LOCAL MODULE FUNCTION
-            # -------------------------------------------------
-
-            local_function = self._resolve_local_function(
-                symbol,
-                callsite.method,
+            RelationshipSemanticMapper.enrich(
+                rel,
+                resolved=True,
             )
 
-            if local_function:
+            relationships.append(rel)
 
-                if local_function.symbol_id != symbol.symbol_id:
-
-                    relationships.append(
-                        Relationship(
-                            relationship_id=(
-                                f"calls_function::"
-                                f"{symbol.symbol_id}::"
-                                f"{local_function.symbol_id}"
-                            ),
-                            source_symbol_id=symbol.symbol_id,
-                            target_symbol_id=local_function.symbol_id,
-                            relationship_type="CALLS_FUNCTION",
-                            confidence=0.9,
-                        )
-                    )
-
-                continue
-
-            # -------------------------------------------------
-            # EXTERNAL / FRAMEWORK / STDLIB
-            # -------------------------------------------------
-
-            references.append(
-                self._build_reference(
-                    symbol,
-                    callsite,
-                )
-            )
-
-        return relationships, references
+        return relationships
 
     # ---------------------------------------------------------
     # SELF METHODS
@@ -240,40 +159,4 @@ class RelationshipExtractor:
         return self.symbol_index.find_local_function(
             context_symbol.module_name,
             function_name,
-        )
-
-    # ---------------------------------------------------------
-    # SEMANTIC REFERENCES
-    # ---------------------------------------------------------
-    def _build_reference(
-        self,
-        symbol,
-        callsite,
-    ):
-
-        ref_type = "EXTERNAL_REFERENCE"
-
-        if callsite.call_type == "self_method":
-            ref_type = "INTERNAL_REFERENCE"
-
-        elif callsite.call_type == "super_method":
-            ref_type = "SUPER_REFERENCE"
-
-        elif callsite.owner in self.BUILTIN_OWNERS:
-            ref_type = "BUILTIN_REFERENCE"
-
-        elif callsite.owner in self.STDLIB_OWNERS:
-            ref_type = "STDLIB_REFERENCE"
-
-        elif callsite.owner == "models":
-            ref_type = "FRAMEWORK_REFERENCE"
-
-        return SemanticReference(
-            reference_id=(f"semantic_ref::" f"{symbol.symbol_id}::" f"{callsite.raw}"),
-            source_symbol_id=symbol.symbol_id,
-            reference_type=ref_type,
-            raw_call=callsite.raw,
-            owner=callsite.owner,
-            method=callsite.method,
-            confidence=0.5,
         )

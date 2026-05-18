@@ -2,6 +2,7 @@
 
 from pipeline.structure.models.callsite import CallSite
 
+
 class CallNormalizer:
 
     INVALID_NAMESPACE_PREFIXES = (
@@ -17,9 +18,7 @@ class CallNormalizer:
         ".all",
     )
 
-    INVALID_CALL_PREFIXES = (
-        "ValidationError",
-    )
+    INVALID_CALL_PREFIXES = ("ValidationError",)
 
     DJANGO_FIELDS = (
         "CharField",
@@ -85,12 +84,9 @@ class CallNormalizer:
 
         return call
 
-
-
     # ---------------------------------------------------------
     # CALLSITE
     # ---------------------------------------------------------
-
 
     def build_callsite(self, raw: str):
 
@@ -142,7 +138,7 @@ class CallNormalizer:
         # -----------------------------------------
 
         if parts[0] == "super":
-            
+
             calltype = "super_method"
 
             return CallSite(

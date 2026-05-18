@@ -31,7 +31,7 @@ def test_indexer(file_path: str):
 
     print("\n============ REFERENCES ============")
 
-    for ref in store.get_all_semantic_references():
+    for ref in result["semantic_references"]:
         print(ref)
 
     store.close()

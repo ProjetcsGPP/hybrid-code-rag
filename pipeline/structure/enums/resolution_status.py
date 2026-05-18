@@ -1,0 +1,14 @@
+from enum import Enum
+
+
+class ResolutionStatus(str, Enum):
+
+    RESOLVED = "RESOLVED"
+
+    PARTIAL = "PARTIAL"
+
+    DEFERRED = "DEFERRED"
+
+    UNRESOLVABLE = "UNRESOLVABLE"
+
+    RUNTIME_APPROXIMATION = "RUNTIME_APPROXIMATION"

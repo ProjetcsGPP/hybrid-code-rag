@@ -14,18 +14,14 @@ class SQLiteStructuralStore:
 
     def __init__(
         self,
-        db_path: str = (
-            "storage/structural/structure.db"
-        ),
+        db_path: str = ("storage/structural/structure.db"),
     ):
 
         self.db_path = db_path
 
         self._ensure_directory()
 
-        self.conn = sqlite3.connect(
-            self.db_path
-        )
+        self.conn = sqlite3.connect(self.db_path)
 
         self.conn.row_factory = sqlite3.Row
 
@@ -44,15 +40,14 @@ class SQLiteStructuralStore:
             os.remove(self.db_path)
 
         self.conn = sqlite3.connect(self.db_path)
+
         self.conn.row_factory = sqlite3.Row
 
         self._initialize_schema()
 
     def _ensure_directory(self):
 
-        db_dir = Path(
-            self.db_path
-        ).parent
+        db_dir = Path(self.db_path).parent
 
         db_dir.mkdir(
             parents=True,
@@ -67,8 +62,7 @@ class SQLiteStructuralStore:
         # SYMBOLS
         # =============================================
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS symbols (
 
                 symbol_id TEXT PRIMARY KEY,
@@ -89,15 +83,13 @@ class SQLiteStructuralStore:
                 start_line INTEGER,
                 end_line INTEGER
             )
-            """
-        )
+            """)
 
         # =============================================
         # RELATIONSHIPS
         # =============================================
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS relationships (
 
                 relationship_id TEXT PRIMARY KEY,
@@ -109,15 +101,13 @@ class SQLiteStructuralStore:
 
                 confidence REAL
             )
-            """
-        )
+            """)
 
         # =============================================
         # SEMANTIC REFERENCES
         # =============================================
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS semantic_references (
 
                 reference_id TEXT PRIMARY KEY,
@@ -133,57 +123,93 @@ class SQLiteStructuralStore:
 
                 confidence REAL
             )
-            """
-        )
+            """)
 
+        # =============================================
+        # MIGRATIONS
+        # =============================================
+
+        self._ensure_relationship_columns()
 
         # =============================================
         # INDEXES
         # =============================================
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_symbols_name
             ON symbols(name)
-            """
-        )
+            """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_symbols_path
             ON symbols(symbol_path)
-            """
-        )
+            """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_symbols_parent
             ON symbols(parent_symbol_id)
-            """
-        )
+            """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_relationships_source
             ON relationships(source_symbol_id)
-            """
-        )
+            """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_relationships_target
             ON relationships(target_symbol_id)
-            """
-        )
+            """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_relationships_type
             ON relationships(relationship_type)
-            """
-        )
+            """)
 
         self.conn.commit()
+
+    # -------------------------------------------------
+    # SCHEMA MIGRATION
+    # -------------------------------------------------
+
+    def _ensure_relationship_columns(self):
+
+        cursor = self.conn.cursor()
+
+        existing_columns = self._get_table_columns("relationships")
+
+        required_columns = {
+            "layer": "TEXT",
+            "resolution_status": "TEXT",
+            "provenance": "TEXT",
+            "dispatch_type": "TEXT",
+            "framework_hint": "TEXT",
+            "resolver_stage": "TEXT",
+        }
+
+        for column_name, column_type in required_columns.items():
+
+            if column_name in existing_columns:
+                continue
+
+            print(f"[SCHEMA MIGRATION] " f"Adding relationships.{column_name}")
+
+            cursor.execute(f"""
+                ALTER TABLE relationships
+                ADD COLUMN {column_name} {column_type}
+                """)
+
+        self.conn.commit()
+
+    def _get_table_columns(
+        self,
+        table_name: str,
+    ):
+
+        cursor = self.conn.execute(f"PRAGMA table_info({table_name})")
+
+        rows = cursor.fetchall()
+
+        return {row["name"] for row in rows}
 
     # -------------------------------------------------
     # SYMBOLS
@@ -222,23 +248,17 @@ class SQLiteStructuralStore:
             """,
             (
                 symbol.symbol_id,
-
                 symbol.symbol_path,
                 symbol.canonical_name,
                 symbol.name,
-
                 symbol.symbol_type,
-
                 symbol.module_name,
                 symbol.file_path,
-
                 symbol.parent_symbol_id,
-
                 symbol.semantic_type,
-
                 symbol.start_line,
                 symbol.end_line,
-            )
+            ),
         )
 
         self.conn.commit()
@@ -256,7 +276,7 @@ class SQLiteStructuralStore:
             FROM symbols
             WHERE symbol_id = ?
             """,
-            (symbol_id,)
+            (symbol_id,),
         )
 
         return cursor.fetchone()
@@ -283,20 +303,30 @@ class SQLiteStructuralStore:
 
                 relationship_type,
 
-                confidence
+                confidence,
 
-            ) VALUES (?, ?, ?, ?, ?)
+                layer,
+                resolution_status,
+                provenance,
+                dispatch_type,
+                framework_hint,
+                resolver_stage
+
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 relationship.relationship_id,
-
                 relationship.source_symbol_id,
                 relationship.target_symbol_id,
-
                 relationship.relationship_type,
-
                 relationship.confidence,
-            )
+                relationship.layer,
+                relationship.resolution_status,
+                relationship.provenance,
+                relationship.dispatch_type,
+                relationship.framework_hint,
+                relationship.resolver_stage,
+            ),
         )
 
         self.conn.commit()
@@ -318,7 +348,7 @@ class SQLiteStructuralStore:
             (
                 symbol_id,
                 symbol_id,
-            )
+            ),
         )
 
         return cursor.fetchall()
@@ -331,8 +361,7 @@ class SQLiteStructuralStore:
 
         if self.conn:
             self.conn.close()
-    
-    
+
     # -------------------------------------------------
     # GRAPH STATS
     # -------------------------------------------------
@@ -341,41 +370,34 @@ class SQLiteStructuralStore:
 
         cursor = self.conn.cursor()
 
-        nodes = cursor.execute(
-            """
+        nodes = cursor.execute("""
             SELECT COUNT(*)
             FROM symbols
-            """
-        ).fetchone()[0]
+            """).fetchone()[0]
 
-        edges = cursor.execute(
-            """
+        edges = cursor.execute("""
             SELECT COUNT(*)
             FROM relationships
-            """
-        ).fetchone()[0]
+            """).fetchone()[0]
 
-        references = cursor.execute(
-            """
+        references = cursor.execute("""
             SELECT COUNT(*)
             FROM semantic_references
-            """
-        ).fetchone()[0]
+            """).fetchone()[0]
 
         return {
             "nodes": nodes,
             "edges": edges,
             "references": references,
         }
-    
+
     # -------------------------------------------------
     # SEMANTIC REFERENCES
     # -------------------------------------------------
 
     def get_all_semantic_references(self):
 
-        cursor = self.conn.execute(
-            """
+        cursor = self.conn.execute("""
             SELECT
                 reference_id,
                 source_symbol_id,
@@ -385,12 +407,9 @@ class SQLiteStructuralStore:
                 method,
                 confidence
             FROM semantic_references
-            """
-        )
+            """)
 
         return cursor.fetchall()
-
-
 
     def save_semantic_reference(
         self,
@@ -420,18 +439,13 @@ class SQLiteStructuralStore:
             """,
             (
                 reference.reference_id,
-
                 reference.source_symbol_id,
-
                 reference.reference_type,
-
                 reference.raw_call,
-
                 reference.owner,
                 reference.method,
-
                 reference.confidence,
-            )
+            ),
         )
 
         self.conn.commit()
