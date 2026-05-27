@@ -1,6 +1,12 @@
+# pipeline/test_structural_indexer.py
+
 from pipeline.ast_chunker import ASTChunker
-from pipeline.structure.structural_indexer import StructuralIndexer
+
+# from pipeline.structure.structural_indexer import StructuralIndexer
 from pipeline.structure.storage.sqlite_store import SQLiteStructuralStore
+from pipeline_v2.application.bootstrap_legacy_bridge import (
+    build_legacy_indexer_with_postgres,
+)
 
 
 def test_indexer(file_path: str):
@@ -13,7 +19,8 @@ def test_indexer(file_path: str):
 
     store.reset()
 
-    indexer = StructuralIndexer(store)
+    # indexer = StructuralIndexer(store)
+    indexer = build_legacy_indexer_with_postgres()
 
     result = indexer.index_chunks(chunks)
 

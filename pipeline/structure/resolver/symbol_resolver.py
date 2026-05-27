@@ -14,9 +14,7 @@ class SymbolResolver:
         self.call_resolver = CallResolver(symbol_index)
 
     def resolve_calls(
-        self,
-        calls: list[CallSite],
-        context_symbol: Symbol
+        self, calls: list[CallSite], context_symbol: Symbol
     ) -> list[Symbol]:
 
         resolved = []
@@ -66,7 +64,8 @@ class SymbolResolver:
         # -----------------------------
 
         candidates = [
-            c for c in candidates
+            c
+            for c in candidates
             if not c.symbol_path.startswith("models.")
             and not c.module_name.startswith("django")
         ]
@@ -106,10 +105,7 @@ class SymbolResolver:
 
                 if c.module_name != context_symbol.module_name:
 
-                    boosts[c.symbol_id] = max(
-                        boosts[c.symbol_id] - 0.2,
-                        -0.5
-                    )
+                    boosts[c.symbol_id] = max(boosts[c.symbol_id] - 0.2, -0.5)
 
         # -----------------------------
         # FINAL SCORING
@@ -125,10 +121,7 @@ class SymbolResolver:
                 context_symbol,
             )
 
-            final_score = (
-                base_score +
-                boosts.get(c.symbol_id, 0.0)
-            )
+            final_score = base_score + boosts.get(c.symbol_id, 0.0)
 
             scored.append((final_score, c))
 
@@ -139,9 +132,5 @@ class SymbolResolver:
 
         return scored[0][1] if scored else None
 
-
     def explain(self, call: str):
-        return {
-            "call": call,
-            "candidates": self.index.search(call)
-        }
+        return {"call": call, "candidates": self.index.search(call)}

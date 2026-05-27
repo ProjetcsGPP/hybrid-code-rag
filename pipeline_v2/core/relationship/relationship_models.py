@@ -1,4 +1,4 @@
-#
+# pipeline_v2/core/relationship/relationship_models.py
 
 from dataclasses import dataclass, field
 from typing import Dict
@@ -7,6 +7,7 @@ from .relationship_types import RelationshipType
 
 @dataclass
 class RelationshipV2:
+
     id: str
 
     source: str
@@ -14,9 +15,20 @@ class RelationshipV2:
 
     type: RelationshipType
 
-    layer: str  # STRUCTURAL | SEMANTIC | RUNTIME
-    status: str  # RESOLVED | UNRESOLVED | APPROXIMATE
+    dispatch: str = "DIRECT"
+
+    raw_call: str = ""
+
+    layer: str = "STRUCTURAL"
+
+    status: str = "RESOLVED"
 
     confidence: float = 1.0
+
+    provenance: str = "AST"
+
+    framework_hint: str = ""
+
+    semantic_owner: str = ""
 
     metadata: Dict = field(default_factory=dict)

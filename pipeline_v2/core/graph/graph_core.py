@@ -1,7 +1,7 @@
 # pipeline_v2/core/graph/graph_core.py
 
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from .graph_store import GraphStoreV2
 from .graph_index import GraphIndexV2
@@ -10,71 +10,135 @@ from .graph_types import GraphNodeV2, GraphEdgeV2
 
 class GraphCoreV2:
     """
-    Graph Core V2:
-    - store: persistência estrutural
-    - index: aceleração de lookup
-    - semantic views: leitura por camada/relacionamento
+    GraphCoreV2 - ENFORCED VERSION
+
+    Agora atua como:
+    - identity gatekeeper
+    - deduplication guard
+    - structural consistency enforcer
     """
 
     def __init__(self):
         self.store = GraphStoreV2()
         self.index = GraphIndexV2()
 
-        # NOVO: índices de arestas por performance semântica
         self.edges_by_source: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
         self.edges_by_target: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
         self.edges_by_type: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
 
-    # -------------------------
-    # NODES
-    # -------------------------
+        # -------------------------------------------------
+        # NEW: ID REGISTRY (ENFORCEMENT CORE)
+        # -------------------------------------------------
+
+        self._node_ids: Set[str] = set()
+        self._edge_ids: Set[str] = set()
+
+    # =====================================================
+    # NODE ENFORCEMENT
+    # =====================================================
+
     def add_node(self, node: GraphNodeV2):
+        """
+        Enforces:
+        - unique node identity
+        - canonical stability
+        """
+
+        if node.id in self._node_ids:
+            # node já existe → ignora duplicação estrutural
+            return
+
+        if not node.id:
+            raise ValueError("Node ID cannot be empty")
+
+        self._node_ids.add(node.id)
+
         self.store.add_node(node)
         self.index.index_node(node)
 
     def get_node(self, node_id: str) -> Optional[GraphNodeV2]:
         return self.store.get_node(node_id)
 
-    # -------------------------
-    # EDGES (EVOLUÍDO)
-    # -------------------------
+    # =====================================================
+    # EDGE ENFORCEMENT (CRÍTICO)
+    # =====================================================
+
     def add_edge(self, edge: GraphEdgeV2):
         """
-        Agora edges são indexadas semanticamente também.
+        Enforces:
+        - deterministic identity uniqueness
+        - source/target integrity
+        - duplicate prevention
         """
 
+        # -------------------------------------------------
+        # 1. VALIDATION: ID
+        # -------------------------------------------------
+
+        if not edge.id:
+            raise ValueError("Edge ID cannot be empty")
+
+        if edge.id in self._edge_ids:
+            # duplicata semântica ou replay → ignorar
+            return
+
+        # -------------------------------------------------
+        # 2. VALIDATION: SOURCE / TARGET
+        # -------------------------------------------------
+
+        if not hasattr(edge, "source") or not hasattr(edge, "target"):
+            return
+
+        if not edge.source or not edge.target:
+            raise ValueError(f"Invalid edge endpoints: {edge}")
+
+        # -------------------------------------------------
+        # 3. REGISTER ID (CRITICAL)
+        # -------------------------------------------------
+
+        self._edge_ids.add(edge.id)
+
+        # -------------------------------------------------
+        # 4. VALIDATION: UNRESOLVED TARGETS (BÁSICA)
+        # -------------------------------------------------
+
+        if not self.validate_edge(edge):
+            return
+
+        # -------------------------------------------------
+        # 5. PERSISTENCE
+        # -------------------------------------------------
+
         self.store.add_edge(edge)
+
+        # -------------------------------------------------
+        # 5. INDEXING (CONSISTENCY)
+        # -------------------------------------------------
 
         self.edges_by_source[edge.source].append(edge)
         self.edges_by_target[edge.target].append(edge)
         self.edges_by_type[edge.type].append(edge)
 
-    # -------------------------
-    # TRACE (ENRIQUECIDO)
-    # -------------------------
-    def trace(self, node_id: str):
-        """
-        Trace estrutural bidirecional.
-        """
+    # =====================================================
+    # TRACE (UNCHANGED)
+    # =====================================================
 
+    def trace(self, node_id: str):
         return {
             "from": self.edges_by_source.get(node_id, []),
             "to": self.edges_by_target.get(node_id, []),
         }
 
-    # -------------------------
-    # NOVO: TRACE SEMÂNTICO
-    # -------------------------
+    # =====================================================
+    # SEMANTIC TRACE (ENHANCED SAFETY)
+    # =====================================================
+
     def semantic_trace(
         self,
         node_id: str,
         layer: Optional[str] = None,
         status: Optional[str] = None,
     ):
-        """
-        Trace filtrado por camada semântica.
-        """
-
         edges = self.edges_by_source.get(node_id, [])
 
         if layer:
@@ -85,14 +149,11 @@ class GraphCoreV2:
 
         return edges
 
-    # -------------------------
-    # NOVO: SUBGRAFO LOCAL
-    # -------------------------
-    def subgraph(self, node_id: str, depth: int = 1):
-        """
-        Extrai subgrafo local para contexto RAG.
-        """
+    # =====================================================
+    # SUBGRAPH (SAFE VERSION)
+    # =====================================================
 
+    def subgraph(self, node_id: str, depth: int = 1):
         visited = set()
         frontier = [node_id]
 
@@ -105,6 +166,7 @@ class GraphCoreV2:
             for nid in frontier:
                 if nid in visited:
                     continue
+
                 visited.add(nid)
 
                 node = self.store.get_node(nid)
@@ -122,25 +184,40 @@ class GraphCoreV2:
             "edges": edges,
         }
 
-    # -------------------------
-    # NOVO: EDGE QUERY
-    # -------------------------
+    # =====================================================
+    # EDGE QUERY
+    # =====================================================
+
     def get_edges_by_type(self, edge_type: str):
         return self.edges_by_type.get(edge_type, [])
 
-    # -------------------------
-    # TRACE COMPLETO
-    # -------------------------
-    def trace_full(self, node_id: str):
-        """
-        Visão completa: estrutural + semântica.
-        """
+    # =====================================================
+    # FULL TRACE
+    # =====================================================
 
+    def trace_full(self, node_id: str):
         return {
             "node": self.get_node(node_id),
             "trace": self.trace(node_id),
             "semantic": {
                 "calls": self.semantic_trace(node_id, status="RESOLVED"),
-                "runtime": self.semantic_trace(node_id, status="RUNTIME_APPROXIMATION"),
+                "runtime": self.semantic_trace(
+                    node_id,
+                    status="RUNTIME_APPROXIMATION",
+                ),
             },
         }
+
+    # =====================================================
+    # GRAPH VALIDATION (BÁSICA)
+    # =====================================================
+
+    def validate_edge(self, edge):
+
+        if edge.source.startswith("UNRESOLVED::"):
+            return False
+
+        if edge.target.startswith("UNRESOLVED::"):
+            return False
+
+        return True

@@ -1,7 +1,11 @@
 # pipeline_v2/core/contract/contract_enforcer.py
 
 from typing import Any
-from .semantic_contract import ChunkContract, SymbolContract, RelationshipContract
+from .semantic_contract import ChunkContract
+from pipeline_v2.core.relationship.relationship_models import (
+    RelationshipV2,
+)
+from pipeline_v2.core.symbol.symbol_models import SymbolV2
 
 
 class ContractViolation(Exception):
@@ -25,10 +29,10 @@ class ContractEnforcer:
     # SYMBOL
     # -------------------------
     @staticmethod
-    def enforce_symbol(symbol: Any) -> SymbolContract:
-        if not isinstance(symbol, SymbolContract):
+    def enforce_symbol(symbol: Any) -> SymbolV2:
+        if not isinstance(symbol, SymbolV2):
             raise ContractViolation(
-                f"Symbol inválido. Esperado SymbolContract, recebido: {type(symbol)}"
+                f"Symbol inválido. Esperado SymbolV2, recebido: {type(symbol)}"
             )
         return symbol
 
@@ -36,10 +40,10 @@ class ContractEnforcer:
     # RELATIONSHIP
     # -------------------------
     @staticmethod
-    def enforce_relationship(rel: Any) -> RelationshipContract:
-        if not isinstance(rel, RelationshipContract):
+    def enforce_relationship(rel: Any) -> RelationshipV2:
+        if not isinstance(rel, RelationshipV2):
             raise ContractViolation(
-                f"Relationship inválido. Esperado RelationshipContract, "
+                f"Relationship inválido. Esperado RelationshipV2, "
                 f"recebido: {type(rel)}"
             )
         return rel

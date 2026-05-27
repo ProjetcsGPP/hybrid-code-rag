@@ -44,8 +44,20 @@ class RelationshipContract:
     source: str
     target: str
     type: str
+
     layer: str = "SEMANTIC"
     status: str = "RESOLVED"
+
     dispatch: str = "DIRECT"
+
     raw_call: str = ""
+
+    confidence: float = 1.0
+
+    provenance: str = "AST_DIRECT"
+
+    framework_hint: str = ""
+
+    semantic_owner: str = ""
+
     metadata: Dict[str, Any] = field(default_factory=dict)

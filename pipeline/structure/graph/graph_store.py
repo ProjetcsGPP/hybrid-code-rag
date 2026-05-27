@@ -5,9 +5,9 @@ from pipeline.contracts import Symbol
 
 class GraphStore:
 
-    def __init__(self, sqlite_store):
+    def __init__(self, store):
 
-        self.store = sqlite_store
+        self.store = store
 
     # -----------------------
     # NODE
@@ -42,7 +42,6 @@ class GraphStore:
         existing = self.store.get_symbol(symbol_id)
 
         if existing:
-
             return symbol_id
 
         external_symbol = Symbol(
@@ -71,15 +70,4 @@ class GraphStore:
 
     def stats(self):
 
-        cursor = self.store.conn.cursor()
-
-        nodes = cursor.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
-
-        edges = cursor.execute("SELECT COUNT(*) FROM relationships").fetchone()[0]
-
-        unresolved = cursor.execute("""
-            SELECT COUNT(*) FROM relationships
-            WHERE target_symbol_id IS NULL
-        """).fetchone()[0]
-
-        return {"nodes": nodes, "edges": edges, "unresolved": unresolved}
+        return self.store.get_graph_stats()

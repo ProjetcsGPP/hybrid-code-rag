@@ -2,7 +2,7 @@
 
 from pipeline.structure.symbol_extractor import SymbolExtractor
 from pipeline.structure.relationship_extractor import RelationshipExtractor
-from pipeline.structure.storage.sqlite_store import SQLiteStructuralStore
+
 from pipeline.structure.resolver.symbol_index import SymbolIndex
 from pipeline.structure.resolver.call_resolver import CallResolver
 
@@ -15,12 +15,22 @@ from pipeline.structure.semantic.semantic_reference_builder import (
 
 from pipeline.structure.semantic.variable_flow_builder import VariableFlowBuilder
 
+from pipeline.structure.storage.postgres_structural_store import (
+    PostgresStructuralStore,
+)
+
 
 class StructuralIndexer:
 
-    def __init__(self, store: SQLiteStructuralStore):
+    def __init__(
+        self,
+        store: PostgresStructuralStore,
+        graph_writer=None,
+    ):
 
         self.store = store
+
+        self.graph_writer = graph_writer
 
         self.graph_store = GraphStore(store)
 
@@ -77,6 +87,9 @@ class StructuralIndexer:
 
             self.store.save_symbol(symbol)
 
+            if self.graph_writer:
+                self.graph_writer.write_symbol(symbol)
+
             self._symbols_buffer.append(symbol)
 
             symbols.append(symbol)
@@ -121,6 +134,9 @@ class StructuralIndexer:
 
                 self.store.save_relationship(r)
 
+                if self.graph_writer:
+                    self.graph_writer.write_relationship(r)
+
                 relationships.append(r)
 
             # -------------------------------------
@@ -140,6 +156,9 @@ class StructuralIndexer:
             for edge in call_edges:
 
                 self.graph_store.save_edge(edge)
+
+                if self.graph_writer:
+                    self.graph_writer.write_relationship(edge)
 
                 relationships.append(edge)
 

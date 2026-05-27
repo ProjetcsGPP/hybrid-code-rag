@@ -1,29 +1,44 @@
 # pipeline_bridge.py
 
-from pipeline.structure.structural_indexer import StructuralIndexer
 
-# futuro import (quando existir)
-# from pipeline_v2.application.indexing_service import IndexingService
+"""
+LEGACY PIPELINE - NÃO USAR PARA NOVAS INGESTÕES
+SUBSTITUÍDO POR pipeline_v2.application.pipeline_bridge.PipelineBridgeV2
+"""
+
+from pipeline_v2.core.symbol.symbol_resolver import (
+    SymbolResolverV2,
+)
+from pipeline_v2.core.inheritance.inheritance_resolver import (
+    InheritanceResolverV2,
+)
+from pipeline_v2.application.bootstrap_runtime import build_postgres_repository
+
+from pipeline_v2.core.semantic.engine.semantic_core_engine_v2 import (
+    SemanticCoreEngineV2,
+)
+
+from pipeline.ast_chunker import ASTChunker
 
 
 class PipelineBridge:
-    """
-    Camada de transição entre pipeline legado e pipeline_v2.
-    Permite rodar os dois sistemas em paralelo.
-    """
 
-    def __init__(self, mode="legacy"):
-        self.mode = mode
-        self.legacy = StructuralIndexer()
+    def __init__(self, mode="v2"):
+        self.symbol_resolver = SymbolResolverV2()
+        self.inheritance_resolver = InheritanceResolverV2()
 
-        # self.new = IndexingService()
+        self.semantic_engine = SemanticCoreEngineV2(
+            repository=build_postgres_repository()
+        )
 
-    def run_indexer(self, *args, **kwargs):
-        """
-        Executa indexação em modo legado ou novo pipeline.
-        """
-        if self.mode == "legacy":
-            return self.legacy.run(*args, **kwargs)
+    def run(self, file_path: str):
 
-        # return self.new.run(*args, **kwargs)
-        raise NotImplementedError("pipeline_v2 ainda não ativo")
+        chunks = ASTChunker(file_path).chunk()
+
+        symbols = self.symbol_resolver.resolve(chunks)
+
+        inheritance = self.inheritance_resolver.resolve(chunks, symbols)
+
+        result = self.semantic_engine.ingest(symbols=symbols, inheritance=inheritance)
+
+        return result

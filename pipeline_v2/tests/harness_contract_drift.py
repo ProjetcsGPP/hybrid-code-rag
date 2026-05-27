@@ -13,6 +13,7 @@ from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
 
 from pipeline_v2.core.contract.symbol_adapter import SymbolAdapter
+from pipeline_v2.core.contract.semantic_contract import SymbolContract
 
 
 def run(file_path: str):
@@ -29,7 +30,8 @@ def run(file_path: str):
     print("\n===== 2. SYMBOL CONTRACT =====")
 
     symbol_core = SymbolCoreV2()
-    symbols = []
+    symbols_contract = []
+    symbols_core = []
 
     for c in chunks:
 
@@ -37,13 +39,23 @@ def run(file_path: str):
 
         clean = SymbolAdapter.from_ast(meta)
 
-        ContractEnforcer.enforce_symbol(clean)
+        ContractEnforcer.enforce_list(
+            [clean],
+            SymbolContract,
+        )
 
-        symbols.append(clean)
+        symbols_contract.append(clean)
+
+        core_symbol = SymbolCoreV2.from_contract(clean)
+
+        symbol_core.register(core_symbol)
+
+        symbols_core.append(core_symbol)
 
         print(f"Processing symbol: {clean.name} ({clean.type}) ({clean.file_path})")
 
-    print("symbols:", len(symbols))
+    print("contracts:", len(symbols_contract))
+    print("core:", len(symbols_core))
 
     # -------------------------
     # RELATIONSHIPS
@@ -75,7 +87,7 @@ def run(file_path: str):
 
     context = BuildContextV2(
         file_path=file_path,
-        symbols=symbols,
+        symbols=symbols_core,
         relationships=relationships,
     )
 
@@ -92,7 +104,7 @@ def run(file_path: str):
     graph_nodes = len(graph_runtime.store.nodes)
     graph_edges = len(graph_runtime.store.edges)
 
-    symbol_count = len(symbols)
+    symbol_count = len(symbols_core)
     rel_count = len(relationships)
 
     drift_report = {
@@ -121,6 +133,38 @@ def run(file_path: str):
 
     for k, v in list(graph_runtime.store.nodes.items())[:3]:
         print(k, "=>", v)
+
+    print("\n===== 7. RELATIONSHIP SAMPLE =====")
+
+    for r in relationships[:5]:
+
+        print(
+            {
+                "id": r.id,
+                "type": r.type,
+                "dispatch": r.dispatch,
+                "confidence": r.confidence,
+                "semantic_owner": r.semantic_owner,
+                "resolved_call": r.metadata.get("resolved_call"),
+                "metadata": r.metadata,
+            }
+        )
+
+    print("\n===== 8. INSTANCE SEMANTIC CHECK =====")
+
+    for r in relationships:
+
+        if r.semantic_owner:
+
+            print(
+                {
+                    "type": r.type,
+                    "semantic_owner": r.semantic_owner,
+                    "confidence": r.confidence,
+                    "resolved_call": r.metadata.get("resolved_call"),
+                    "provenance": r.provenance,
+                }
+            )
 
 
 if __name__ == "__main__":

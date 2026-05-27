@@ -1,11 +1,7 @@
 # pipeline/structure/structural_query.py
-
-from pipeline.structure.storage.sqlite_store import SQLiteStructuralStore
-
-
 class StructuralQuery:
 
-    def __init__(self, store: SQLiteStructuralStore):
+    def __init__(self, store):
         self.store = store
 
     # ---------------------------------------------
@@ -20,9 +16,10 @@ class StructuralQuery:
         cursor = self.store.conn.cursor()
 
         cursor.execute(
-            """
-            SELECT * FROM symbols
-            WHERE name = ?
+            f"""
+            SELECT *
+            FROM {self.store.schema}.symbols
+            WHERE name = %s
             """,
             (name,),
         )
@@ -34,9 +31,10 @@ class StructuralQuery:
         cursor = self.store.conn.cursor()
 
         cursor.execute(
-            """
-            SELECT * FROM symbols
-            WHERE file_path = ?
+            f"""
+            SELECT *
+            FROM {self.store.schema}.symbols
+            WHERE file_path = %s
             """,
             (file_path,),
         )
@@ -48,9 +46,10 @@ class StructuralQuery:
         cursor = self.store.conn.cursor()
 
         cursor.execute(
-            """
-            SELECT * FROM symbols
-            WHERE parent_symbol_id = ?
+            f"""
+            SELECT *
+            FROM {self.store.schema}.symbols
+            WHERE parent_symbol_id = %s
             """,
             (parent_symbol_id,),
         )
@@ -74,10 +73,14 @@ class StructuralQuery:
         cursor = self.store.conn.cursor()
 
         cursor.execute(
-            """
-            SELECT * FROM relationships
-            WHERE (source_symbol_id = ? OR target_symbol_id = ?)
-            AND relationship_type = ?
+            f"""
+            SELECT *
+            FROM {self.store.schema}.relationships
+            WHERE (
+                source_symbol_id = %s
+                OR target_symbol_id = %s
+            )
+            AND relationship_type = %s
             """,
             (
                 symbol_id,
@@ -93,10 +96,10 @@ class StructuralQuery:
         cursor = self.store.conn.cursor()
 
         cursor.execute(
-            """
+            f"""
             SELECT parent_symbol_id
-            FROM symbols
-            WHERE symbol_id = ?
+            FROM {self.store.schema}.symbols
+            WHERE symbol_id = %s
             """,
             (symbol_id,),
         )

@@ -1,5 +1,3 @@
-# pipeline_v2/tests/harness_full_pipeline.py
-
 from pipeline.ast_chunker import ASTChunker
 
 from pipeline_v2.core.symbol.symbol_core import SymbolCoreV2
@@ -11,6 +9,11 @@ from pipeline_v2.core.builder.graph_builder import GraphBuilderV2
 from pipeline_v2.core.builder.build_context import BuildContextV2
 
 from pipeline_v2.core.graph.runtime_graph import graph_runtime
+from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
+
+from pipeline_v2.tests.identity_contract.identity_contract_harness import (
+    IdentityContractHarness,
+)
 
 
 def safe_symbol_type(value: str):
@@ -20,7 +23,20 @@ def safe_symbol_type(value: str):
         return SymbolType.UNKNOWN if hasattr(SymbolType, "UNKNOWN") else value
 
 
+def run_identity_contract(identity_registry, graph, symbol_core, relationship_core):
+
+    harness = IdentityContractHarness(
+        identity_registry, graph, symbol_core, relationship_core
+    )
+
+    return harness.run_all_checks()
+
+
 def run_harness(file_path: str):
+
+    # 🧹 IMPORTANT: evita estado contaminado
+    graph_runtime.store.nodes.clear()
+    graph_runtime.store.edges.clear()
 
     print("\n===== 1. AST =====")
     chunker = ASTChunker(file_path)
@@ -54,8 +70,11 @@ def run_harness(file_path: str):
     rel_core = RelationshipCoreV2(symbol_core=symbol_core)
 
     relationships = []
+
     for c in chunks:
-        relationships.extend(rel_core.process_chunk(c, {}))
+        chunk_contract = SemanticAdapter.normalize_chunk(c)
+
+        relationships.extend(rel_core.process_chunk(chunk_contract, {}))
 
     print(f"relationships: {len(relationships)}")
 
@@ -80,6 +99,20 @@ def run_harness(file_path: str):
     print("\n===== 6. SAMPLE =====")
     for k, v in list(graph_runtime.store.nodes.items())[:3]:
         print(k, "=>", v)
+
+    # 🔴 7. IDENTITY CONTRACT (NOVO - ESSENCIAL)
+    print("\n===== 7. IDENTITY CONTRACT =====")
+
+    result = run_identity_contract(
+        identity_registry=(
+            builder.identity_registry if hasattr(builder, "identity_registry") else None
+        ),
+        graph=graph_runtime.store,
+        symbol_core=symbol_core,
+        relationship_core=rel_core,
+    )
+
+    print(result)
 
 
 if __name__ == "__main__":
