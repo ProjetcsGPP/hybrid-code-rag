@@ -1,26 +1,22 @@
 # pipeline_v2/core/builder/graph_builder.py
 
-from ..symbol.symbol_core import SymbolCoreV2
-from ..relationship.relationship_core import RelationshipCoreV2
-
 from ..graph.runtime_graph import graph_runtime
-
 from ..graph.graph_types import GraphNodeV2, GraphEdgeV2
 
 from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 
+from pipeline_v2.core.identity.identity_convergence_layer_v1 import (
+    IdentityConvergenceLayerV1,
+)
+
 
 class GraphBuilderV2:
 
-    def __init__(self):
-
+    def __init__(self, identity_registry):
         self.node_index = {}
-
-        self.symbol_core = SymbolCoreV2()
-
-        self.relationship_core = RelationshipCoreV2()
-
         self.graph_core = graph_runtime
+        self.identity_registry = identity_registry
+        self.identity = IdentityConvergenceLayerV1(identity_registry)
 
     # -------------------------
     # SYMBOL INGESTION
@@ -29,20 +25,27 @@ class GraphBuilderV2:
 
         symbol = ContractEnforcer.enforce_symbol(symbol)
 
-        node = GraphNodeV2(
-            id=symbol.id,
-            type=str(symbol.type),
+        # 1. registry é a autoridade de registro
+        node = self.identity_registry.register(symbol)
+
+        node_id = node.id
+
+        # 2. node final do grafo usa identity registrada
+        graph_node = GraphNodeV2(
+            id=node_id,
+            type=(
+                str(symbol.type.value)
+                if hasattr(symbol.type, "value")
+                else str(symbol.type)
+            ),
             name=symbol.name,
             canonical=symbol.canonical,
             metadata=symbol.metadata,
         )
 
-        self.graph_core.add_node(node)
+        self.graph_core.add_node(graph_node)
 
-        # 🔥 INDEXAÇÃO CRÍTICA
-        self.node_index[symbol.id] = node.id
-
-        return node
+        return graph_node
 
     # -------------------------
     # RELATIONSHIP INGESTION
@@ -51,18 +54,18 @@ class GraphBuilderV2:
 
         rel = ContractEnforcer.enforce_relationship(rel)
 
-        source = self._resolve_node(rel.source)
-        target = self._resolve_node(rel.target)
+        # 🔥 resolve via convergence layer + registry
+        source = self.identity.resolve(rel.source)
+        target = self.identity.resolve(rel.target)
 
-        # 🔥 proteção de consistência
         if source is None or target is None:
             return None
 
         edge = GraphEdgeV2(
             id=rel.id,
-            source=source,
-            target=target,
-            type=rel.type,
+            source=str(source),
+            target=str(target),
+            type=(rel.type.value if hasattr(rel.type, "value") else str(rel.type)),
             layer=rel.layer,
             status=rel.status,
             confidence=getattr(rel, "confidence", 1.0),
@@ -71,6 +74,9 @@ class GraphBuilderV2:
 
         self.graph_core.store.add_edge(edge)
 
+        # 🔥 registry update
+        self.identity_registry.register(rel)
+
         return edge
 
     # -------------------------
@@ -78,20 +84,17 @@ class GraphBuilderV2:
     # -------------------------
     def ingest_file(self, context):
 
-        # 1. RESET de estado local
-        self.node_index = {}
+        # ❌ node_index REMOVED COMPLETELY
 
-        # 2. symbols primeiro (garante identidade)
+        edges = []
+
+        # 1. symbols
         for symbol in context.symbols:
-
             symbol = ContractEnforcer.enforce_symbol(symbol)
-
             self.ingest_symbol(symbol)
 
-        # 3. relationships depois (com resolução)
-        edges = []
+        # 2. relationships
         for rel in context.relationships:
-
             rel = ContractEnforcer.enforce_relationship(rel)
 
             edge = self.ingest_relationship(rel)
@@ -102,12 +105,5 @@ class GraphBuilderV2:
         return {
             "graph": self.graph_core,
             "edges_created": len(edges),
-            "nodes_created": len(self.node_index),
+            "nodes_created": len(self.graph_core.store.nodes),
         }
-
-    def _resolve_node(self, ref_id: str):
-        """
-        Resolve símbolo → node real do grafo
-        """
-
-        return self.node_index.get(ref_id, ref_id)

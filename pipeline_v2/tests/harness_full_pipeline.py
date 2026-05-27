@@ -15,6 +15,10 @@ from pipeline_v2.tests.identity_contract.identity_contract_harness import (
     IdentityContractHarness,
 )
 
+from pipeline_v2.core.identity.identity_registry import (
+    IdentityRegistryV2,
+)
+
 
 def safe_symbol_type(value: str):
     try:
@@ -44,8 +48,12 @@ def run_harness(file_path: str):
 
     print(f"chunks: {len(chunks)}")
 
+    identity_registry = IdentityRegistryV2()
+
     print("\n===== 2. SYMBOLS =====")
-    symbol_core = SymbolCoreV2()
+    symbol_core = SymbolCoreV2(
+        identity_registry=identity_registry,
+    )
 
     symbols = []
 
@@ -67,20 +75,25 @@ def run_harness(file_path: str):
         symbols.append(sym)
 
     print("\n===== 3. RELATIONSHIPS =====")
-    rel_core = RelationshipCoreV2(symbol_core=symbol_core)
+    rel_core = RelationshipCoreV2(
+        symbol_core=symbol_core,
+        identity_registry=identity_registry,
+    )
 
     relationships = []
 
     for c in chunks:
         chunk_contract = SemanticAdapter.normalize_chunk(c)
 
-        relationships.extend(rel_core.process_chunk(chunk_contract, {}))
+        symbol_table = {s.canonical: s for s in symbols}
+
+        relationships.extend(rel_core.process_chunk(chunk_contract, symbol_table))
 
     print(f"relationships: {len(relationships)}")
 
     print("\n===== 4. GRAPH BUILD =====")
 
-    builder = GraphBuilderV2()
+    builder = GraphBuilderV2(identity_registry=IdentityRegistryV2())
 
     context = BuildContextV2(
         file_path=file_path,
@@ -104,15 +117,19 @@ def run_harness(file_path: str):
     print("\n===== 7. IDENTITY CONTRACT =====")
 
     result = run_identity_contract(
-        identity_registry=(
-            builder.identity_registry if hasattr(builder, "identity_registry") else None
-        ),
+        identity_registry=identity_registry,
         graph=graph_runtime.store,
         symbol_core=symbol_core,
         relationship_core=rel_core,
     )
 
     print(result)
+
+    from pipeline_v2.tests.harness_identity_graph_drift import (
+        run_identity_graph_drift_check,
+    )
+
+    run_identity_graph_drift_check(identity_registry)
 
 
 if __name__ == "__main__":

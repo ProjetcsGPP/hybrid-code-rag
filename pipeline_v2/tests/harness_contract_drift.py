@@ -15,6 +15,10 @@ from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
 from pipeline_v2.core.contract.symbol_adapter import SymbolAdapter
 from pipeline_v2.core.contract.semantic_contract import SymbolContract
 
+from pipeline_v2.core.identity.identity_registry import (
+    IdentityRegistryV2,
+)
+
 
 def run(file_path: str):
 
@@ -23,13 +27,17 @@ def run(file_path: str):
     chunks = chunker.chunk()
     print("chunks:", len(chunks))
 
+    identity_registry = IdentityRegistryV2()
+
     # -------------------------
     # SYMBOLS
     # -------------------------
 
     print("\n===== 2. SYMBOL CONTRACT =====")
 
-    symbol_core = SymbolCoreV2()
+    symbol_core = SymbolCoreV2(
+        identity_registry=identity_registry,
+    )
     symbols_contract = []
     symbols_core = []
 
@@ -83,7 +91,7 @@ def run(file_path: str):
     # -------------------------
     print("\n===== 4. GRAPH BUILD =====")
 
-    builder = GraphBuilderV2()
+    builder = GraphBuilderV2(identity_registry=IdentityRegistryV2())
 
     context = BuildContextV2(
         file_path=file_path,

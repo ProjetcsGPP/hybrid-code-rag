@@ -1,5 +1,9 @@
 # pipeline_v2/core/symbol/symbol_index.py
 
+from pipeline_v2.core.identity.identity_registry import (
+    IdentityRegistryV2,
+)
+
 
 class SymbolIndexV2:
 
@@ -8,6 +12,8 @@ class SymbolIndexV2:
         self.by_name = {}
         self.by_file = {}
         self.by_canonical = {}
+
+        self.identity_registry = IdentityRegistryV2()
 
     def add(self, symbol):
 
@@ -34,17 +40,8 @@ class SymbolIndexV2:
 
     def find_by_name(self, name: str):
 
-        ids = self.by_name.get(name, [])
-
-        return [self.by_id[sid] for sid in ids if sid in self.by_id]
+        return self.identity_registry.resolve_by_name(name)
 
     def find_by_canonical(self, canonical: str):
 
-        ids = self.by_canonical.get(canonical, [])
-
-        if not ids:
-            return None
-
-        first = ids[0]
-
-        return self.by_id.get(first)
+        return self.identity_registry.resolve_by_canonical(canonical)

@@ -1,30 +1,18 @@
 # pipeline_v2/core/symbol/symbol_core.py
 
-from .symbol_index import SymbolIndexV2
 from .symbol_factory import SymbolFactoryV2
 from .symbol_types import SymbolType
-from .symbol_models import SymbolV2
 
-from pipeline_v2.core.identity.identity_registry import (
-    IdentityRegistryV2,
-)
 
-from pipeline_v2.core.identity.identity_gateway import IdentityGatewayV2
+from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
 
 
 class SymbolCoreV2:
 
-    def __init__(
-        self,
-        identity_registry: IdentityRegistryV2 = None,
-    ):
+    def __init__(self, identity_registry=None):
 
-        self.index = SymbolIndexV2()
-
+        # 🔥 SINGLE SOURCE OF TRUTH
         self.identity_registry = identity_registry or IdentityRegistryV2()
-
-        # 🔵 ADICIONAR GATEWAY (NOVO)
-        self.identity = IdentityGatewayV2(self.identity_registry)
 
     # =====================================================
     # SYMBOL CREATION
@@ -45,75 +33,32 @@ class SymbolCoreV2:
             **kwargs,
         )
 
-        self.index.add(symbol)
-
-        # global identity registration
-        self.identity.register_symbol(symbol)
+        # 🔥 ONLY ONE REGISTRY
+        self.identity_registry.register(symbol)
 
         return symbol
 
     # =====================================================
-    # LOOKUP
+    # LOOKUP (delegation only)
     # =====================================================
 
     def get_symbol(self, symbol_id: str):
-        return self.index.get(symbol_id)
+        return self.identity_registry.resolve_id(symbol_id)
 
     def find_by_name(self, name: str):
-        return self.index.find_by_name(name)
+        return self.identity_registry.resolve_by_name(name)
 
     def find_by_canonical(self, canonical: str):
-        return self.index.find_by_canonical(canonical)
+        return self.identity_registry.resolve_by_canonical(canonical)
 
     # =====================================================
-    # MANUAL REGISTRATION
+    # BULK ACCESS
     # =====================================================
-
-    def register(self, symbol):
-
-        self.index.add(symbol)
-
-        self.identity.register_symbol(symbol)
-
-        return symbol
-
-    # =====================================================
-    # CONTRACT LOADER
-    # =====================================================
-
-    @staticmethod
-    def from_contract(contract):
-
-        symbol_type = (
-            contract.type
-            if isinstance(contract.type, SymbolType)
-            else SymbolType(contract.type)
-        )
-
-        return SymbolV2(
-            id=contract.id,
-            name=contract.name,
-            type=symbol_type,
-            file_path=contract.file_path,
-            canonical=contract.canonical,
-            parent=contract.parent,
-            metadata=contract.metadata or {},
-        )
 
     def get_all_symbols(self):
-        """
-        Contract method for inspection layers (tests, validation, debugging)
-        Must return all registered symbols in the system.
-        """
+        return list(self.identity_registry.by_id.values())
 
-        if hasattr(self.index, "all"):
-            return list(self.index.all())
-
-        if hasattr(self.index, "values"):
-            return list(self.index.values())
-
-        if hasattr(self.index, "items"):
-            return [v for _, v in self.index.items()]
-
-        # fallback seguro (último caso)
-        return list(getattr(self.index, "_symbols", {}).values())
+    def clear_indexes(self):
+        self._by_id.clear()
+        self._by_canonical.clear()
+        self._by_name.clear()

@@ -22,6 +22,8 @@ class SemanticGraphStabilizerV2:
 
     def stabilize(self, edges):
 
+        self.edge_registry.clear()
+
         self._index(edges)
 
         stabilized = []

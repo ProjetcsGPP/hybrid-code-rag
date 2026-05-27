@@ -10,17 +10,11 @@ from pipeline_v2.core.relationship.relationship_core import RelationshipCoreV2
 from pipeline_v2.core.builder.graph_builder import GraphBuilderV2
 from pipeline_v2.core.builder.build_context import BuildContextV2
 
-from pipeline_v2.core.graph.graph_storage import GraphStorageV2
-
-from pipeline_v2.core.normalization.graph_normalizer_v2 import GraphNormalizerV2
-
-# from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
 
 from pipeline_v2.application.bootstrap_runtime import (
     identity_registry,
 )
 
-from pipeline_v2.core.identity.identity_gateway import IdentityGatewayV2
 from pipeline_v2.core.semantic.semantic_graph_stabilizer_v2 import (
     SemanticGraphStabilizerV2,
 )
@@ -43,19 +37,14 @@ class PipelineBridgeV2:
         )
 
         self.identity_registry = identity_registry
-        self.identity = IdentityGatewayV2(identity_registry)
 
         self.relationship_core = RelationshipCoreV2(
             identity_registry=identity_registry,
         )
 
-        self.graph_builder = GraphBuilderV2()
-        self.storage = GraphStorageV2()
-
-        # ❌ REMOVER registry duplicado
-        # self.registry = GlobalSymbolRegistry()
-
-        self.normalizer = GraphNormalizerV2(self.identity_registry)
+        self.graph_builder = GraphBuilderV2(identity_registry=self.identity_registry)
+        # self.storage = GraphStorageV2()
+        self.storage = None
 
         self.stabilizer = SemanticGraphStabilizerV2()
 
@@ -73,6 +62,8 @@ class PipelineBridgeV2:
 
     def run(self, file_path: str) -> Dict[str, Any]:
 
+        self.symbol_core.clear_indexes()
+
         self._log("PIPELINE_START", {"file": file_path})
 
         chunks = self._step_ast(file_path)
@@ -85,10 +76,7 @@ class PipelineBridgeV2:
 
         graph_state = self._step_graph(symbols, relationships)
 
-        # 🔴 FINAL STABILIZATION PASS (CRÍTICO)
-        normalized = self._step_normalization(graph_state)
-
-        result = self._step_storage(normalized)
+        result = self._step_storage(graph_state)
 
         self._log("PIPELINE_END", result)
 
@@ -129,8 +117,7 @@ class PipelineBridgeV2:
                 metadata=meta,
             )
 
-            # 🔴 REGISTER GLOBAL (SOURCE OF TRUTH)
-            self.identity.register_symbol(symbol)
+            self.identity_registry.register(symbol)
 
             symbols.append(symbol)
 
@@ -194,43 +181,17 @@ class PipelineBridgeV2:
         return graph_state
 
     # =====================================================
-    # 🔴 STEP 5 - STABILIZATION PASS (NOVO)
-    # =====================================================
-
-    def _step_normalization(self, graph_state):
-
-        self._log("NORMALIZATION_START", {})
-
-        normalized = self.normalizer.normalize(
-            nodes=graph_state["nodes_created"],
-            edges=graph_state["edges_created"],
-        )
-
-        self._log(
-            "NORMALIZATION_END",
-            {
-                "nodes": len(normalized["nodes"]),
-                "edges": len(normalized["edges"]),
-            },
-        )
-
-        return normalized
-
-    # =====================================================
     # STEP 6 - STORAGE
     # =====================================================
 
-    def _step_storage(self, normalized_graph):
+    def _step_storage(self, graph_state):
 
         self._log("GRAPH_STORAGE_START", {})
 
         storage_map = {
-            "nodes": len(normalized_graph["nodes"]),
-            "edges": len(normalized_graph["edges"]),
+            "nodes": graph_state["nodes_created"],
+            "edges": graph_state["edges_created"],
         }
-
-        # (hook futuro: persistência real estruturada)
-        # self.storage.save_graph(normalized_graph)
 
         self._log("GRAPH_STORAGE_END", storage_map)
 

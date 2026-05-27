@@ -1,162 +1,140 @@
 # pipeline_v2/core/relationship/relationship_core.py
 
 from .relationship_factory import RelationshipFactoryV2
-from .relationship_types import RelationshipType
 from .relationship_resolver import RelationshipResolverV2
 
 from pipeline_v2.core.state.semantic_context import SemanticContextV2
 from pipeline_v2.core.state.assignment_resolver import AssignmentResolverV2
-from pipeline_v2.core.state.semantic_inference import SemanticInferenceEngineV2
 
 from pipeline_v2.core.resolution.symbol_resolution_engine_v2 import (
     SymbolResolutionEngineV2,
 )
 
+from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
+
+from pipeline_v2.core.identity.identity_convergence_layer_v1 import (
+    IdentityConvergenceLayerV1,
+)
+
 
 class RelationshipCoreV2:
     """
-    CLEAN VERSION:
+    Relationship orchestration layer.
 
-    Pipeline interno agora é determinístico e linear:
-    1. Source Resolution
-    2. Target Resolution
-    3. Semantic Inference
-    4. Relationship Build
-    5. Identity Enforcement
+    Responsável apenas por:
+    - semantic orchestration
+    - relationship inference
+    - relationship creation
     """
 
-    def __init__(self, symbol_core=None, graph_core=None, identity_registry=None):
+    def __init__(
+        self,
+        symbol_core=None,
+        graph_core=None,
+        identity_registry=None,
+    ):
 
-        self.edges = {}
-
-        self.resolver = RelationshipResolverV2()
         self.symbol_core = symbol_core
         self.graph_core = graph_core
 
-        self.assignment_resolver = AssignmentResolverV2()
-        self.semantic_inference = SemanticInferenceEngineV2()
+        # registry único de verdade
+        self.identity_registry = identity_registry or IdentityRegistryV2()
 
-        self.identity_registry = identity_registry
+        # convergence layer (normalização de referência)
+        self.identity = IdentityConvergenceLayerV1(self.identity_registry)
+
+        self.resolver = RelationshipResolverV2()
 
         self.resolution_engine = SymbolResolutionEngineV2(
             symbol_core=symbol_core,
             graph_core=graph_core,
-            identity_registry=identity_registry,
+            identity_registry=self.identity_registry,
         )
 
     # =========================================================
-    # PUBLIC API (SIMPLIFIED)
+    # PUBLIC API
     # =========================================================
 
-    def process_chunk(self, chunk, symbol_table):
+    def process_chunk(
+        self,
+        chunk,
+        symbol_table,
+    ):
 
         relationships = []
 
         semantic_context = self._build_semantic_context(chunk)
 
-        # 1. SOURCE (single resolution point)
         source = self.resolution_engine.resolve_source(
             chunk,
             symbol_table,
-            self._chunk_id(chunk),
-            self._chunk_metadata(chunk),
+            self._chunk_id,
+            self._chunk_metadata,
         )
 
         if not source:
             return relationships
 
-        source = self._enforce_identity(source)
+        # 🔴 IMPORTANTE: não mutar source global
+        resolved_source = self.identity.resolve(source)
 
-        # 2. CALL LOOP
         for raw_call in self._chunk_raw_calls(chunk):
 
-            call = self._normalize_call(raw_call)
+            normalized_call = self.resolution_engine.normalize_call(raw_call)
 
             resolved = self.resolver.resolve_call(
-                caller_symbol=source,
-                raw_call=call["raw"] if isinstance(call, dict) else str(call),
+                caller_symbol=resolved_source,
+                raw_call=normalized_call["raw"],
                 semantic_context=semantic_context,
             )
 
-            if not resolved.get("semantic"):
-                continue
+            semantic_data = resolved.get("semantic", {})
 
-            target = resolved["semantic"].get("resolved_call")
+            target = self.resolution_engine.resolve_semantic_target(
+                semantic_data,
+                symbol_table,
+            )
+
+            if not target:
+                target = self.resolution_engine.resolve_target(
+                    normalized_call["raw"],
+                    symbol_table,
+                )
+
             if not target:
                 continue
 
+            resolved_target = self.identity.resolve(target)
+
+            if resolved_target is None:
+                resolved_target = f"external::{target}"
+
             rel = RelationshipFactoryV2.create(
-                source=str(source),
-                target=str(target),
+                source=str(resolved_source),
+                target=str(resolved_target),
                 type=resolved["relationship_type"],
                 dispatch=resolved["dispatch"],
-                raw_call=call,
-                layer=resolved.get("layer", "SEMANTIC"),
+                raw_call=normalized_call["raw"],
+                layer=resolved.get("layer", "STRUCTURAL"),
                 status="RESOLVED",
                 confidence=resolved["confidence"],
-                provenance=resolved["semantic"].get("provenance", "UNKNOWN"),
-                framework_hint=resolved["semantic"].get("framework_hint", ""),
-                semantic_owner=resolved["semantic"].get("resolved_owner", ""),
-                metadata=self._build_metadata(chunk, semantic_context, resolved),
+                provenance=semantic_data.get("provenance", "UNKNOWN"),
+                framework_hint=semantic_data.get("framework_hint", ""),
+                semantic_owner=semantic_data.get("resolved_owner", ""),
+                metadata=self._build_metadata(chunk, resolved),
             )
 
             self.identity_registry.register(rel)
 
-            self.edges[rel.id] = rel
             relationships.append(rel)
 
         return relationships
 
     # =========================================================
-    # INFERENCE NORMALIZATION (CLEAN)
-    # =========================================================
-
-    def _apply_inference(self, inference):
-
-        if inference:
-            return (
-                inference["type"],
-                inference["dispatch"],
-                inference["confidence"],
-                inference["provenance"],
-                inference.get("framework_hint", ""),
-                inference.get("semantic_owner", ""),
-            )
-
-        return (
-            RelationshipType.CALLS,
-            "DIRECT",
-            0.50,
-            "AST_DIRECT",
-            "",
-            "",
-        )
-
-    # =========================================================
-    # IDENTITY ENFORCEMENT
-    # =========================================================
-
-    def _enforce_identity(self, value):
-
-        if not value:
-            return None
-
-        if isinstance(value, str):
-            return value
-
-        if hasattr(value, "id"):
-            return self.identity_registry.resolve_id(value.id) or value.id
-
-        return str(value)
-
-    def _is_unresolved(self, value: str) -> bool:
-        return value.startswith("UNRESOLVED::")
-
-    # =========================================================
     # METADATA
     # =========================================================
 
-    def _build_metadata(self, chunk, semantic_context, inference):
+    def _build_metadata(self, chunk, inference):
 
         return {
             "chunk_id": self._chunk_id(chunk),
@@ -166,7 +144,7 @@ class RelationshipCoreV2:
         }
 
     # =========================================================
-    # CONTEXT BUILDER
+    # SEMANTIC CONTEXT
     # =========================================================
 
     def _build_semantic_context(self, chunk):
@@ -185,50 +163,46 @@ class RelationshipCoreV2:
         return context
 
     # =========================================================
-    # CHUNK HELPERS (UNCHANGED)
+    # CHUNK HELPERS
     # =========================================================
 
     def _chunk_metadata(self, chunk):
+
         if isinstance(chunk, dict):
             return chunk.get("metadata", {})
+
         return getattr(chunk, "metadata", {})
 
     def _chunk_raw_calls(self, chunk):
+
         if isinstance(chunk, dict):
+
             metadata = chunk.get("metadata", {})
+
             return chunk.get("raw_calls") or metadata.get("calls") or []
 
         return getattr(chunk, "raw_calls", None) or getattr(chunk, "calls", [])
 
     def _chunk_id(self, chunk):
+
         if isinstance(chunk, dict):
+
             metadata = chunk.get("metadata", {})
+
             return (
                 chunk.get("id")
                 or metadata.get("chunk_id")
                 or metadata.get("symbol_path")
             )
+
         return getattr(chunk, "id", None)
 
     def _chunk_file(self, chunk):
+
         if isinstance(chunk, dict):
+
             metadata = chunk.get("metadata", {})
+
             return chunk.get("file") or metadata.get("file")
+
         return getattr(chunk, "file", None)
-
-    def _normalize_call(self, call):
-
-        if isinstance(call, str):
-
-            # tenta quebrar padrão module.function
-            if "." in call:
-                parts = call.split(".")
-                return {
-                    "raw": call,
-                    "module": ".".join(parts[:-1]),
-                    "symbol": parts[-1],
-                }
-
-            return {"raw": call, "module": None, "symbol": call}
-
-        return call
