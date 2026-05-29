@@ -14,6 +14,11 @@ from pipeline_v2.core.contract.symbol_adapter import SymbolAdapter
 from pipeline_v2.core.contract.semantic_contract import SymbolContract
 from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
 
+from pipeline_v2.application.bootstrap_runtime import (
+    identity_registry,
+    graph_runtime,
+)
+
 
 def run(file_path: str):
 
@@ -22,7 +27,9 @@ def run(file_path: str):
 
     print("\n===== 2. SYMBOL TRANSITION LAYER =====")
 
-    symbol_core = SymbolCoreV2()
+    symbol_core = SymbolCoreV2(
+        identity_registry=identity_registry,
+    )
     symbols_contract = []
     symbols_core = []
 
@@ -31,14 +38,19 @@ def run(file_path: str):
         meta = c["metadata"]
 
         contract_symbol = SymbolAdapter.from_ast(meta)
+
         ContractEnforcer.enforce_list(
             [contract_symbol],
             SymbolContract,
         )
 
-        core_symbol = SymbolCoreV2.from_contract(contract_symbol)
-
-        symbol_core.register(core_symbol)  # <<< ESSENCIAL
+        core_symbol = symbol_core.create_symbol(
+            name=contract_symbol.name,
+            type=contract_symbol.type,
+            file_path=contract_symbol.file_path,
+            canonical=contract_symbol.canonical,
+            metadata=getattr(contract_symbol, "metadata", {}),
+        )
 
         symbols_contract.append(contract_symbol)
         symbols_core.append(core_symbol)
@@ -47,7 +59,10 @@ def run(file_path: str):
 
     print("\n===== 3. RELATIONSHIPS =====")
 
-    rel_core = RelationshipCoreV2(symbol_core=symbol_core)
+    rel_core = RelationshipCoreV2(
+        symbol_core=symbol_core,
+        identity_registry=identity_registry,
+    )
 
     relationships = []
 
@@ -65,7 +80,10 @@ def run(file_path: str):
 
     print("\n===== 4. GRAPH BUILD =====")
 
-    builder = GraphBuilderV2()
+    builder = GraphBuilderV2(
+        identity_registry=identity_registry,
+        graph_core=graph_runtime,
+    )
 
     context = BuildContextV2(
         file_path=file_path,

@@ -2,50 +2,61 @@
 
 
 class FakeSymbol:
-    def __init__(self, name, canonical_id):
+
+    def __init__(self, id, name, canonical):
+
+        self.id = id
         self.name = name
-        self.canonical_id = canonical_id
+        self.canonical = canonical
 
 
 class FakeGraphNode:
+
     def __init__(self, node_id):
+
         self.id = node_id
 
 
 class FakeIdentityRegistry:
 
-    def __init__(self, mapping):
-        self.mapping = mapping
+    def __init__(self):
 
-    def resolve(self, name):
-        return self.mapping.get(name)
+        self.by_id = {}
+        self.by_canonical = {}
+
+    def register(self, obj):
+
+        self.by_id[obj.id] = obj
+
+        canonical = getattr(obj, "canonical", None)
+
+        if canonical:
+            self.by_canonical[canonical] = obj
 
     def exists(self, node_id):
-        return node_id in self.mapping.values()
+
+        return node_id in self.by_id
 
 
 class FakeSymbolCore:
 
     def __init__(self, symbols):
+
         self._symbols = symbols
 
     def get_all_symbols(self):
+
         return self._symbols
 
 
 class FakeGraph:
 
-    def __init__(self, nodes):
-        self._nodes = nodes
+    def __init__(self):
 
-    def get_nodes(self):
-        return self._nodes
+        self.nodes = {}
+        self.edges = {}
 
 
 class FakeRelationshipCore:
 
-    def __init__(self, calls):
-        self._calls = calls
-
-    def get_internal_calls(self):
-        return self._calls
+    pass

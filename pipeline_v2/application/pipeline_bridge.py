@@ -10,88 +10,126 @@ from pipeline_v2.core.relationship.relationship_core import RelationshipCoreV2
 from pipeline_v2.core.builder.graph_builder import GraphBuilderV2
 from pipeline_v2.core.builder.build_context import BuildContextV2
 
-
-from pipeline_v2.application.bootstrap_runtime import (
-    identity_registry,
-)
-
 from pipeline_v2.core.semantic.semantic_graph_stabilizer_v2 import (
     SemanticGraphStabilizerV2,
 )
 
 
 class PipelineBridgeV2:
-    """
-    Pipeline oficial do CODE-RAG V2.
 
-    Agora com:
-    - Stabilization Pass (Registry + Normalizer)
-    - Fase A fechada estruturalmente
-    - Pronto para Fase B (Semantic Index Layer)
-    """
+    # Pipeline oficial do CODE-RAG V2.
 
-    def __init__(self):
+    # Agora com:
+    # - runtime isolado
+    # - identity scope explícito
+    # - graph scope explícito
+    # - deterministic execution
+
+    def __init__(self, runtime):
+
+        self.runtime = runtime
+
+        self.identity_registry = runtime.identity_registry
+
+        self.graph_runtime = runtime.graph_runtime
+
+        self.mutation_auditor = runtime.mutation_auditor
+
+        # =====================================================
+        # CORES
+        # =====================================================
 
         self.symbol_core = SymbolCoreV2(
-            identity_registry=identity_registry,
+            identity_registry=self.identity_registry,
         )
-
-        self.identity_registry = identity_registry
 
         self.relationship_core = RelationshipCoreV2(
-            identity_registry=identity_registry,
+            symbol_core=self.symbol_core,
+            graph_core=self.graph_runtime,
+            identity_registry=self.identity_registry,
         )
 
-        self.graph_builder = GraphBuilderV2(identity_registry=self.identity_registry)
-        # self.storage = GraphStorageV2()
+        self.graph_builder = GraphBuilderV2(
+            identity_registry=self.identity_registry,
+            graph_core=self.graph_runtime,
+        )
+
+        # =====================================================
+        # STORAGE
+        # =====================================================
+
         self.storage = None
+
+        # =====================================================
+        # STABILIZER
+        # =====================================================
 
         self.stabilizer = SemanticGraphStabilizerV2()
 
-        # =========================
-        # FUTURO: ENGINES
-        # =========================
+        # =====================================================
+        # FUTURE ENGINES
+        # =====================================================
+
         self.core_engine = None
+
         self.experimental_engine = None
+
+        # =====================================================
+        # TRACE
+        # =====================================================
 
         self.trace: List[Dict[str, Any]] = []
 
-    # =====================================================
-    # INGESTION PIPELINE
-    # =====================================================
+        # =====================================================
+        # INGESTION PIPELINE
+        # =====================================================
 
     def run(self, file_path: str) -> Dict[str, Any]:
-
-        self.symbol_core.clear_indexes()
 
         self._log("PIPELINE_START", {"file": file_path})
 
         chunks = self._step_ast(file_path)
+
         symbols = self._step_symbols(chunks)
 
-        # relationships = self._step_relationships(chunks, symbols)
-        raw_relationships = self._step_relationships(chunks, symbols)
+        raw_relationships = self._step_relationships(
+            chunks,
+            symbols,
+        )
 
         relationships = self.stabilizer.stabilize(raw_relationships)
 
-        graph_state = self._step_graph(symbols, relationships)
+        graph_state = self._step_graph(
+            symbols,
+            relationships,
+        )
 
         result = self._step_storage(graph_state)
 
         self._log("PIPELINE_END", result)
 
-        return {"result": result, "trace": self.trace}
+        return {
+            "result": result,
+            "trace": self.trace,
+        }
 
     # =====================================================
     # STEP 1 - AST
     # =====================================================
 
     def _step_ast(self, file_path: str):
-        self._log("AST_CHUNKING_START", {"file": file_path})
+
+        self._log(
+            "AST_CHUNKING_START",
+            {"file": file_path},
+        )
 
         chunks = ASTChunker(file_path).chunk()
 
-        self._log("AST_CHUNKING_END", {"chunks": len(chunks)})
+        self._log(
+            "AST_CHUNKING_END",
+            {"chunks": len(chunks)},
+        )
 
         return chunks
 
@@ -117,11 +155,12 @@ class PipelineBridgeV2:
                 metadata=meta,
             )
 
-            self.identity_registry.register(symbol)
-
             symbols.append(symbol)
 
-        self._log("SYMBOL_EXTRACTION_END", {"symbols": len(symbols)})
+        self._log(
+            "SYMBOL_EXTRACTION_END",
+            {"symbols": len(symbols)},
+        )
 
         return symbols
 
@@ -131,7 +170,10 @@ class PipelineBridgeV2:
 
     def _step_relationships(self, chunks, symbols):
 
-        self._log("RELATIONSHIP_EXTRACTION_START", {})
+        self._log(
+            "RELATIONSHIP_EXTRACTION_START",
+            {},
+        )
 
         symbol_table = {s.canonical: s for s in symbols}
 
@@ -149,7 +191,9 @@ class PipelineBridgeV2:
 
         self._log(
             "RELATIONSHIP_EXTRACTION_END",
-            {"relationships": len(relationships)},
+            {
+                "relationships": len(relationships),
+            },
         )
 
         return relationships
@@ -158,7 +202,11 @@ class PipelineBridgeV2:
     # STEP 4 - GRAPH BUILD
     # =====================================================
 
-    def _step_graph(self, symbols, relationships):
+    def _step_graph(
+        self,
+        symbols,
+        relationships,
+    ):
 
         self._log("GRAPH_BUILD_START", {})
 
@@ -181,24 +229,30 @@ class PipelineBridgeV2:
         return graph_state
 
     # =====================================================
-    # STEP 6 - STORAGE
+    # STEP 5 - STORAGE
     # =====================================================
 
     def _step_storage(self, graph_state):
 
-        self._log("GRAPH_STORAGE_START", {})
+        self._log(
+            "GRAPH_STORAGE_START",
+            {},
+        )
 
         storage_map = {
             "nodes": graph_state["nodes_created"],
             "edges": graph_state["edges_created"],
         }
 
-        self._log("GRAPH_STORAGE_END", storage_map)
+        self._log(
+            "GRAPH_STORAGE_END",
+            storage_map,
+        )
 
         return storage_map
 
     # =====================================================
-    # ENGINE ENTRYPOINTS (FUTURO)
+    # ENGINE ENTRYPOINTS
     # =====================================================
 
     def set_core_engine(self, engine):
@@ -232,5 +286,14 @@ class PipelineBridgeV2:
     # TRACE
     # =====================================================
 
-    def _log(self, stage: str, data: Dict[str, Any]):
-        self.trace.append({"stage": stage, "data": data})
+    def _log(
+        self,
+        stage: str,
+        data: Dict[str, Any],
+    ):
+        self.trace.append(
+            {
+                "stage": stage,
+                "data": data,
+            }
+        )

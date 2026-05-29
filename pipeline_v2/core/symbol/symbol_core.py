@@ -4,15 +4,14 @@ from .symbol_factory import SymbolFactoryV2
 from .symbol_types import SymbolType
 
 
-from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
-
-
 class SymbolCoreV2:
 
     def __init__(self, identity_registry=None):
 
-        # 🔥 SINGLE SOURCE OF TRUTH
-        self.identity_registry = identity_registry or IdentityRegistryV2()
+        if identity_registry is None:
+            raise ValueError("SymbolCoreV2 requires shared identity_registry")
+
+        self.identity_registry = identity_registry
 
     # =====================================================
     # SYMBOL CREATION
@@ -59,6 +58,7 @@ class SymbolCoreV2:
         return list(self.identity_registry.by_id.values())
 
     def clear_indexes(self):
-        self._by_id.clear()
-        self._by_canonical.clear()
-        self._by_name.clear()
+
+        self.identity_registry.by_id.clear()
+        self.identity_registry.by_name.clear()
+        self.identity_registry.by_canonical.clear()

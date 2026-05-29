@@ -7,6 +7,8 @@ from .graph_store import GraphStoreV2
 from .graph_index import GraphIndexV2
 from .graph_types import GraphNodeV2, GraphEdgeV2
 
+from pipeline_v2.core.audit.graph_mutation_auditor_v2 import MutationEvent
+
 
 class GraphCoreV2:
     """
@@ -18,7 +20,10 @@ class GraphCoreV2:
     - structural consistency enforcer
     """
 
-    def __init__(self):
+    def __init__(self, mutation_auditor=None):
+
+        self.mutation_auditor = mutation_auditor
+
         self.store = GraphStoreV2()
         self.index = GraphIndexV2()
 
@@ -33,6 +38,40 @@ class GraphCoreV2:
         self._node_ids: Set[str] = set()
         self._edge_ids: Set[str] = set()
 
+    def set_mutation_auditor(self, auditor):
+        self.mutation_auditor = auditor
+
+    def _ensure_node_exists(self, node_id: str):
+
+        existing = self.store.get_node(node_id)
+
+        if existing:
+            return existing
+
+        # -------------------------------------------------
+        # LAZY EXTERNAL MATERIALIZATION
+        # -------------------------------------------------
+
+        if node_id.startswith("external::"):
+
+            external_node = GraphNodeV2(
+                id=node_id,
+                type="external",
+                name=node_id.split("::")[-1],
+                canonical=node_id,
+                metadata={
+                    "mode": "EXTERNAL",
+                    "semantic_only": True,
+                    "lazy_materialized": True,
+                },
+            )
+
+            self.add_node(external_node)
+
+            return external_node
+
+        return None
+
     # =====================================================
     # NODE ENFORCEMENT
     # =====================================================
@@ -43,6 +82,21 @@ class GraphCoreV2:
         - unique node identity
         - canonical stability
         """
+
+        if self.mutation_auditor:
+
+            decision = self.mutation_auditor.audit(
+                MutationEvent(
+                    actor="GraphCoreV2",
+                    operation="ADD_NODE",
+                    entity=node,
+                    source=node.id,
+                    metadata=getattr(node, "metadata", {}),
+                )
+            )
+
+            if decision["action"] == "BLOCK":
+                return
 
         if node.id in self._node_ids:
             # node já existe → ignora duplicação estrutural
@@ -71,6 +125,22 @@ class GraphCoreV2:
         - duplicate prevention
         """
 
+        if self.mutation_auditor:
+
+            decision = self.mutation_auditor.audit(
+                MutationEvent(
+                    actor="GraphCoreV2",
+                    operation="ADD_EDGE",
+                    entity=edge,
+                    source=edge.source,
+                    target=edge.target,
+                    metadata=getattr(edge, "metadata", {}),
+                )
+            )
+
+            if decision["action"] == "BLOCK":
+                return
+
         # -------------------------------------------------
         # 1. VALIDATION: ID
         # -------------------------------------------------
@@ -91,6 +161,12 @@ class GraphCoreV2:
 
         if not edge.source or not edge.target:
             raise ValueError(f"Invalid edge endpoints: {edge}")
+
+        source_node = self._ensure_node_exists(edge.source)
+        target_node = self._ensure_node_exists(edge.target)
+
+        if not source_node or not target_node:
+            return
 
         # -------------------------------------------------
         # 3. REGISTER ID (CRITICAL)
@@ -211,7 +287,6 @@ class GraphCoreV2:
     # =====================================================
     # GRAPH VALIDATION (BÁSICA)
     # =====================================================
-
     def validate_edge(self, edge):
 
         if edge.source.startswith("UNRESOLVED::"):
@@ -220,4 +295,25 @@ class GraphCoreV2:
         if edge.target.startswith("UNRESOLVED::"):
             return False
 
+        # NOVO: aceita inferred/external mas marca como válida
+        if "external::" in edge.source or "external::" in edge.target:
+            return True
+
         return True
+
+    # =====================================================
+    # GRAPH RESET (ENFORCED)
+    # =====================================================
+    def reset(self):
+
+        self.store.nodes.clear()
+        self.store.edges.clear()
+
+        self.index.reset()
+
+        self.edges_by_source.clear()
+        self.edges_by_target.clear()
+        self.edges_by_type.clear()
+
+        self._node_ids.clear()
+        self._edge_ids.clear()

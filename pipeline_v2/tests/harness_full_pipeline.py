@@ -8,16 +8,18 @@ from pipeline_v2.core.relationship.relationship_core import RelationshipCoreV2
 from pipeline_v2.core.builder.graph_builder import GraphBuilderV2
 from pipeline_v2.core.builder.build_context import BuildContextV2
 
-from pipeline_v2.core.graph.runtime_graph import graph_runtime
+
 from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
 
 from pipeline_v2.tests.identity_contract.identity_contract_harness import (
     IdentityContractHarness,
 )
 
-from pipeline_v2.core.identity.identity_registry import (
-    IdentityRegistryV2,
+from pipeline_v2.application.bootstrap_runtime import (
+    create_runtime_context,
 )
+
+from pipeline_v2.core.audit.identity_graph_auditor_v2 import IdentityGraphAuditorV2
 
 
 def safe_symbol_type(value: str):
@@ -38,17 +40,18 @@ def run_identity_contract(identity_registry, graph, symbol_core, relationship_co
 
 def run_harness(file_path: str):
 
+    runtime = create_runtime_context()
+    identity_registry = runtime.identity_registry
+    graph_runtime = runtime.graph_runtime
+
     # 🧹 IMPORTANT: evita estado contaminado
-    graph_runtime.store.nodes.clear()
-    graph_runtime.store.edges.clear()
+    runtime.reset()
 
     print("\n===== 1. AST =====")
     chunker = ASTChunker(file_path)
     chunks = chunker.chunk()
 
     print(f"chunks: {len(chunks)}")
-
-    identity_registry = IdentityRegistryV2()
 
     print("\n===== 2. SYMBOLS =====")
     symbol_core = SymbolCoreV2(
@@ -93,7 +96,10 @@ def run_harness(file_path: str):
 
     print("\n===== 4. GRAPH BUILD =====")
 
-    builder = GraphBuilderV2(identity_registry=IdentityRegistryV2())
+    builder = GraphBuilderV2(
+        identity_registry=identity_registry,
+        graph_core=graph_runtime,
+    )
 
     context = BuildContextV2(
         file_path=file_path,
@@ -125,11 +131,16 @@ def run_harness(file_path: str):
 
     print(result)
 
-    from pipeline_v2.tests.harness_identity_graph_drift import (
-        run_identity_graph_drift_check,
+    print("\n===== 8. IDENTITY GRAPH AUDIT (FULL) =====")
+
+    auditor = IdentityGraphAuditorV2()
+
+    report = auditor.audit(
+        identity_registry=identity_registry, graph_store=graph_runtime.store
     )
 
-    run_identity_graph_drift_check(identity_registry)
+    print("\n--- IDENTITY REPORT ---")
+    print(report)
 
 
 if __name__ == "__main__":

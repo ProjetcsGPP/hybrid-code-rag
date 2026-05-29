@@ -1,22 +1,24 @@
 # pipeline_v2/core/builder/graph_builder.py
 
-from ..graph.runtime_graph import graph_runtime
+
 from ..graph.graph_types import GraphNodeV2, GraphEdgeV2
 
 from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 
-from pipeline_v2.core.identity.identity_convergence_layer_v1 import (
-    IdentityConvergenceLayerV1,
-)
+from pipeline_v2.core.identity.identity_service_v2 import IdentityServiceV2
 
 
 class GraphBuilderV2:
 
-    def __init__(self, identity_registry):
+    def __init__(
+        self,
+        identity_registry,
+        graph_core,
+    ):
         self.node_index = {}
-        self.graph_core = graph_runtime
+        self.graph_core = graph_core
         self.identity_registry = identity_registry
-        self.identity = IdentityConvergenceLayerV1(identity_registry)
+        self.identity = IdentityServiceV2(identity_registry)
 
     # -------------------------
     # SYMBOL INGESTION
@@ -72,10 +74,12 @@ class GraphBuilderV2:
             metadata=rel.metadata,
         )
 
-        self.graph_core.store.add_edge(edge)
+        self.graph_core.add_edge(edge)
 
-        # 🔥 registry update
-        self.identity_registry.register(rel)
+        # NÃO registrar relationship como identity
+        # identity já foi resolvida no RelationshipCore
+
+        # self.identity_registry.register(rel)
 
         return edge
 

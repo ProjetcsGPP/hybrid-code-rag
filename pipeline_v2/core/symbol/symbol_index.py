@@ -1,19 +1,15 @@
 # pipeline_v2/core/symbol/symbol_index.py
 
-from pipeline_v2.core.identity.identity_registry import (
-    IdentityRegistryV2,
-)
-
 
 class SymbolIndexV2:
 
-    def __init__(self):
+    def __init__(self, identity_registry):
         self.by_id = {}
         self.by_name = {}
         self.by_file = {}
         self.by_canonical = {}
 
-        self.identity_registry = IdentityRegistryV2()
+        self.identity_registry = identity_registry
 
     def add(self, symbol):
 

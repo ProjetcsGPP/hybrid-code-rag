@@ -3,11 +3,16 @@
 from .relationship_models import RelationshipV2
 from .relationship_types import RelationshipType
 
-from pipeline_v2.core.identity.deterministic_identity import DeterministicIdentity
-from pipeline_v2.core.identity.identity_strategy import IdentityStrategy
-
 
 class RelationshipFactoryV2:
+    """
+    Relationship identity is now fully deterministic
+    and fully structural.
+
+    No UUID.
+    No hashes.
+    No external identity generators.
+    """
 
     @staticmethod
     def create(
@@ -23,42 +28,19 @@ class RelationshipFactoryV2:
         framework_hint: str = "",
         semantic_owner: str = "",
         metadata=None,
-        strategy: IdentityStrategy = IdentityStrategy(),
     ):
-        """
-        Factory semântica determinística.
-        """
 
-        # -------------------------------------------------
-        # 1. BUILD CONTEXT VIA STRATEGY
-        # -------------------------------------------------
+        # =====================================================
+        # DETERMINISTIC STRUCTURAL IDENTITY
+        # =====================================================
 
-        context = strategy.build_relationship_context(
-            source=source,
-            target=target,
-            relationship_type=type.value if hasattr(type, "value") else str(type),
-            dispatch=dispatch,
-            layer=layer,
-            raw_call=raw_call,
-        )
+        relationship_type = type.value if hasattr(type, "value") else str(type)
 
-        # -------------------------------------------------
-        # 2. DETERMINISTIC RELATIONSHIP ID
-        # -------------------------------------------------
+        rel_id = f"{source}::{relationship_type}::{target}"
 
-        rel_id = DeterministicIdentity.relationship_id(
-            source=context["source"],
-            target=context["target"],
-            relationship_type=context["relationship_type"],
-            dispatch=context["dispatch"],
-            layer=context["layer"],
-            namespace=context["namespace"],
-            raw_call=context["raw_call"],
-        )
-
-        # -------------------------------------------------
-        # 3. BUILD RELATIONSHIP OBJECT
-        # -------------------------------------------------
+        # =====================================================
+        # BUILD RELATIONSHIP
+        # =====================================================
 
         return RelationshipV2(
             id=rel_id,

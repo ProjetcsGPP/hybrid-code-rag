@@ -1,5 +1,3 @@
-# pipeline_v2/tests/harness_contract_drift.py
-
 from pipeline.ast_chunker import ASTChunker
 
 from pipeline_v2.core.symbol.symbol_core import SymbolCoreV2
@@ -7,27 +5,35 @@ from pipeline_v2.core.relationship.relationship_core import RelationshipCoreV2
 from pipeline_v2.core.builder.graph_builder import GraphBuilderV2
 from pipeline_v2.core.builder.build_context import BuildContextV2
 
-from pipeline_v2.core.graph.runtime_graph import graph_runtime
-
 from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
 
 from pipeline_v2.core.contract.symbol_adapter import SymbolAdapter
 from pipeline_v2.core.contract.semantic_contract import SymbolContract
 
-from pipeline_v2.core.identity.identity_registry import (
-    IdentityRegistryV2,
+from pipeline_v2.application.bootstrap_runtime import (
+    create_runtime_context,
+)
+
+from pipeline_v2.tests.harness_identity_graph_drift import (
+    run_identity_graph_drift_check,
 )
 
 
 def run(file_path: str):
 
+    runtime = create_runtime_context()
+
+    identity_registry = runtime.identity_registry
+    graph_runtime = runtime.graph_runtime
+
+    # evita contaminação de estado
+    runtime.reset()
+
     print("\n===== 1. AST =====")
     chunker = ASTChunker(file_path)
     chunks = chunker.chunk()
     print("chunks:", len(chunks))
-
-    identity_registry = IdentityRegistryV2()
 
     # -------------------------
     # SYMBOLS
@@ -38,6 +44,7 @@ def run(file_path: str):
     symbol_core = SymbolCoreV2(
         identity_registry=identity_registry,
     )
+
     symbols_contract = []
     symbols_core = []
 
@@ -60,7 +67,7 @@ def run(file_path: str):
 
         symbols_core.append(core_symbol)
 
-        print(f"Processing symbol: {clean.name} ({clean.type}) ({clean.file_path})")
+        print(f"Processing symbol: " f"{clean.name} ({clean.type}) ({clean.file_path})")
 
     print("contracts:", len(symbols_contract))
     print("core:", len(symbols_core))
@@ -68,9 +75,13 @@ def run(file_path: str):
     # -------------------------
     # RELATIONSHIPS
     # -------------------------
+
     print("\n===== 3. RELATIONSHIP CONTRACT =====")
 
-    rel_core = RelationshipCoreV2(symbol_core=symbol_core)
+    rel_core = RelationshipCoreV2(
+        symbol_core=symbol_core,
+        identity_registry=identity_registry,
+    )
 
     relationships = []
 
@@ -81,7 +92,9 @@ def run(file_path: str):
         rels = rel_core.process_chunk(chunk_contract, {})
 
         for r in rels:
+
             r = ContractEnforcer.enforce_relationship(r)
+
             relationships.append(r)
 
     print("relationships:", len(relationships))
@@ -89,9 +102,13 @@ def run(file_path: str):
     # -------------------------
     # GRAPH BUILD
     # -------------------------
+
     print("\n===== 4. GRAPH BUILD =====")
 
-    builder = GraphBuilderV2(identity_registry=IdentityRegistryV2())
+    builder = GraphBuilderV2(
+        identity_registry=identity_registry,
+        graph_core=graph_runtime,
+    )
 
     context = BuildContextV2(
         file_path=file_path,
@@ -107,6 +124,7 @@ def run(file_path: str):
     # -------------------------
     # DRIFT ANALYSIS
     # -------------------------
+
     print("\n===== 5. DRIFT DETECTION =====")
 
     graph_nodes = len(graph_runtime.store.nodes)
@@ -135,8 +153,18 @@ def run(file_path: str):
         print("✅ SEM DRIFT: pipeline consistente")
 
     # -------------------------
+    # IDENTITY GRAPH DRIFT
+    # -------------------------
+
+    run_identity_graph_drift_check(
+        identity_registry=identity_registry,
+        graph_runtime=graph_runtime,
+    )
+
+    # -------------------------
     # SAMPLE OUTPUT
     # -------------------------
+
     print("\n===== 6. SAMPLE NODES =====")
 
     for k, v in list(graph_runtime.store.nodes.items())[:3]:

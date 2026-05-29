@@ -1,17 +1,14 @@
 # pipeline_v2/core/context/context_builder.py
 
-# from pipeline_v2.core.graph.graph_core import GraphCoreV2
-from pipeline_v2.core.graph.runtime_graph import graph_runtime
-
 from .context_types import ContextNode, ContextEdge, GraphContext
 from .context_ranker import GraphContextRankerV2
 
 
 class GraphContextBuilderV2:
 
-    def __init__(self):
-        # self.graph = GraphCoreV2()
-        self.graph = graph_runtime
+    def __init__(self, graph):
+
+        self.graph = graph
         self.ranker = GraphContextRankerV2()
 
     # -------------------------

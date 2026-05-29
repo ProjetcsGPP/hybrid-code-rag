@@ -1,4 +1,4 @@
-from pipeline_v2.core.identity.identity_reader_v1 import IdentityReaderV1
+# pipeline_v2/tests/identity_contract/identity_contract_harness.py
 
 
 class IdentityContractViolationError(Exception):
@@ -16,7 +16,6 @@ class IdentityContractHarness:
     ):
 
         self.identity_registry = identity_registry
-        self.reader = IdentityReaderV1(identity_registry)
 
         self.graph = graph
         self.symbol_core = symbol_core
@@ -43,19 +42,26 @@ class IdentityContractHarness:
         return results
 
     # =====================================================
-    # CHECK 1 - UNIQUE SYMBOL IDENTITY
+    # CHECK 1 - UNIQUE CANONICAL IDENTITY
     # =====================================================
 
     def check_unique_identity(self):
 
-        name_to_ids = {}
+        canonical_to_ids = {}
 
-        for symbol in self.reader.iter_symbols():
+        for obj in self.identity_registry.by_id.values():
 
-            name_to_ids.setdefault(symbol.name, set()).add(symbol.id)
+            canonical = getattr(obj, "canonical", None)
+
+            if not canonical:
+                continue
+
+            canonical_to_ids.setdefault(canonical, set()).add(obj.id)
 
         violations = {
-            name: list(ids) for name, ids in name_to_ids.items() if len(ids) > 1
+            canonical: list(ids)
+            for canonical, ids in canonical_to_ids.items()
+            if len(ids) > 1
         }
 
         return {
@@ -123,15 +129,18 @@ class IdentityContractHarness:
         for edge in self.graph.edges.values():
 
             if edge.source == edge.target:
+
                 violations.append(
                     {
                         "edge": edge.id,
                         "reason": "self-reference detected",
                     }
                 )
+
                 continue
 
             if edge.source not in self.identity_registry.by_id:
+
                 violations.append(
                     {
                         "edge": edge.id,
@@ -140,6 +149,7 @@ class IdentityContractHarness:
                 )
 
             if edge.target not in self.identity_registry.by_id:
+
                 violations.append(
                     {
                         "edge": edge.id,

@@ -1,16 +1,20 @@
 # pipeline_v2/tests/harness_identity_graph_drift.py
 
 from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
-from pipeline_v2.core.graph.runtime_graph import graph_runtime
 
 
-def run_identity_graph_drift_check(identity_registry: IdentityRegistryV2):
+def run_identity_graph_drift_check(
+    identity_registry: IdentityRegistryV2,
+    graph_runtime,
+):
 
     print("\n===== IDENTITY vs GRAPH DRIFT CHECK =====")
 
-    # graph_nodes = getattr(graph_runtime.store, "nodes", {})
-
-    registry_ids = set(identity_registry.by_id.keys())
+    registry_ids = {
+        rid
+        for rid in identity_registry.by_id.keys()
+        if "::CALLS::" not in rid and "::FRAMEWORK_CALL::" not in rid
+    }
     graph_ids = set(graph_runtime.store.nodes.keys())
 
     # -------------------------
