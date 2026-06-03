@@ -13,6 +13,11 @@ from pipeline_v2.core.builder.build_context import BuildContextV2
 from pipeline_v2.core.semantic.semantic_graph_stabilizer_v2 import (
     SemanticGraphStabilizerV2,
 )
+from pipeline_v2.core.contract.semantic_adapter import SemanticAdapter
+
+from pipeline_v2.core.contract.contract_enforcer import (
+    ContractEnforcer,
+)
 
 
 class PipelineBridgeV2:
@@ -88,7 +93,9 @@ class PipelineBridgeV2:
 
         self._log("PIPELINE_START", {"file": file_path})
 
-        chunks = self._step_ast(file_path)
+        raw_chunks = self._step_ast(file_path)
+
+        chunks = [SemanticAdapter.normalize_chunk(chunk) for chunk in raw_chunks]
 
         symbols = self._step_symbols(chunks)
 
@@ -145,12 +152,14 @@ class PipelineBridgeV2:
 
         for chunk in chunks:
 
-            meta = chunk["metadata"]
+            ContractEnforcer.enforce_chunk(chunk)
+
+            meta = chunk.metadata
 
             symbol = self.symbol_core.create_symbol(
-                name=meta["name"],
-                type=meta["type"],
-                file_path=meta["file"],
+                name=chunk.name,
+                type=chunk.type,
+                file_path=chunk.file,
                 canonical=meta.get("symbol_path"),
                 metadata=meta,
             )
@@ -180,6 +189,8 @@ class PipelineBridgeV2:
         relationships = []
 
         for chunk in chunks:
+
+            ContractEnforcer.enforce_chunk(chunk)
 
             rels = self.relationship_core.process_chunk(
                 chunk,

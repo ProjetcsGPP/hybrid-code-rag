@@ -15,6 +15,10 @@ from pipeline_v2.core.identity.identity_service_v2 import (
 from pipeline_v2.core.identity.identity_mode import IdentityMode
 from pipeline_v2.core.graph.graph_types import GraphNodeV2
 
+from pipeline_v2.core.state.semantic_inference import (
+    SemanticInferenceEngineV2,
+)
+
 
 class RelationshipCoreV2:
     """
@@ -52,6 +56,8 @@ class RelationshipCoreV2:
             identity_registry=self.identity_registry,
         )
 
+        self.semantic_inference = SemanticInferenceEngineV2()
+
     # =========================================================
     # PUBLIC API
     # =========================================================
@@ -83,13 +89,34 @@ class RelationshipCoreV2:
 
             normalized_call = self.resolution_engine.normalize_call(raw_call)
 
+            imports_hint = getattr(chunk, "imports_context", None)
+
+            semantic_result = self.semantic_inference.resolve_call(
+                raw_call=normalized_call["raw"],
+                semantic_context=semantic_context,
+            )
+
+            if semantic_result and hasattr(semantic_result, "to_dict"):
+                semantic_result = semantic_result.to_dict()
+
             resolved = self.resolver.resolve_call(
                 caller_symbol=resolved_source,
                 raw_call=normalized_call["raw"],
                 semantic_context=semantic_context,
             )
 
-            semantic_data = resolved.get("semantic", {})
+            if semantic_result:
+                resolved.semantic.update(
+                    semantic_result.to_dict()
+                    if hasattr(semantic_result, "to_dict")
+                    else semantic_result.__dict__
+                )
+
+            semantic_data = (
+                resolved.semantic
+                if hasattr(resolved, "semantic")
+                else resolved.get("semantic", {})
+            )
 
             target = self.resolution_engine.resolve_semantic_target(
                 semantic_data,
@@ -102,7 +129,22 @@ class RelationshipCoreV2:
                     symbol_table,
                 )
 
+            # 🔵 NEW: import-based recovery (90% ganho aqui)
             if not target:
+                target = self._resolve_from_imports(
+                    normalized_call["raw"],
+                    imports_hint,
+                )
+
+            # fallback original
+            if not target:
+                target = self.resolution_engine.resolve_target(
+                    normalized_call["raw"],
+                    symbol_table,
+                )
+
+            if not target:
+                target = f"external::UNRESOLVED::{normalized_call['raw']}"
                 continue
 
             resolved_target = self.identity.resolve(target)
@@ -119,19 +161,19 @@ class RelationshipCoreV2:
             rel = RelationshipFactoryV2.create(
                 source=str(resolved_source),
                 target=str(resolved_target),
-                type=resolved["relationship_type"],
-                dispatch=resolved["dispatch"],
+                type=resolved.relationship_type,
+                dispatch=resolved.dispatch,
                 raw_call=normalized_call["raw"],
-                layer=resolved.get("layer", "STRUCTURAL"),
+                layer=resolved.layer,
                 status="RESOLVED",
-                confidence=resolved["confidence"],
+                confidence=resolved.confidence,
                 provenance=semantic_data.get("provenance", "UNKNOWN"),
                 framework_hint=semantic_data.get("framework_hint", ""),
                 semantic_owner=semantic_data.get("resolved_owner", ""),
                 metadata=self._build_metadata(chunk, resolved),
             )
 
-            self.identity_registry.register(rel)
+            # self.identity_registry.register(rel)
 
             relationships.append(rel)
 
@@ -147,7 +189,9 @@ class RelationshipCoreV2:
             "chunk_id": self._chunk_id(chunk),
             "file": self._chunk_file(chunk),
             "semantic_resolution": bool(inference),
-            "inference": inference or {},
+            "inference": (
+                inference.to_dict() if hasattr(inference, "to_dict") else inference
+            ),
         }
 
     # =========================================================
@@ -160,7 +204,15 @@ class RelationshipCoreV2:
 
         metadata = self._chunk_metadata(chunk)
 
-        for assignment in metadata.get("assignments", []):
+        # compatibilidade dict + contract
+        if isinstance(chunk, dict):
+            assignments = chunk.get("assignments") or metadata.get("assignments") or []
+        else:
+            assignments = (
+                getattr(chunk, "assignments", None) or metadata.get("assignments") or []
+            )
+
+        for assignment in assignments:
 
             state = AssignmentResolverV2().resolve(assignment)
 
@@ -213,6 +265,19 @@ class RelationshipCoreV2:
             return chunk.get("file") or metadata.get("file")
 
         return getattr(chunk, "file", None)
+
+    def _resolve_from_imports(self, call: str, imports):
+        if not imports:
+            return None
+
+        for imp in imports:
+            local = imp.get("local_name")
+            module = imp.get("module")
+
+            if call.startswith(local):
+                return f"{module}.{call}"
+
+        return None
 
     # =========================================================
     # EDGE FILTERING

@@ -3,6 +3,12 @@
 from pipeline_v2.core.relationship.relationship_types import (
     RelationshipType,
 )
+from pipeline_v2.core.contract.semantic_classifier import (
+    SemanticCallClassifier,
+)
+from pipeline_v2.core.contract.semantic_inference_result import (
+    SemanticInferenceResult,
+)
 
 
 class SemanticInferenceEngineV2:
@@ -41,40 +47,47 @@ class SemanticInferenceEngineV2:
 
         if state.semantic_type == "queryset" and method in self.QUERYSET_METHODS:
 
-            return {
-                "type": RelationshipType.ORM_QUERYSET_CALL,
-                "dispatch": "ORM",
-                "confidence": min(
+            dispatch = "ORM"
+
+            SemanticCallClassifier.validate_dispatch(dispatch)
+
+            return SemanticInferenceResult(
+                relationship_type=RelationshipType.ORM_QUERYSET_CALL,
+                dispatch=dispatch,
+                confidence=min(
                     state.confidence + 0.03,
                     0.99,
                 ),
-                "semantic_owner": f"QuerySet<{state.model}>",
-                "framework_hint": "django",
-                "provenance": "QUERYSET_PROPAGATION",
-                # IMPORTANTES
-                "resolved_call": f"{state.model}.{method}",
-                "inferred_symbol": state.inferred_symbol,
-            }
+                semantic_owner=f"QuerySet<{state.model}>",
+                framework_hint="django",
+                provenance="QUERYSET_PROPAGATION",
+                resolved_call=f"{state.model}.{method}",
+                inferred_symbol=state.inferred_symbol,
+            )
+
         # =================================================
         # INSTANCE PROPAGATION
         # =================================================
 
         if state.semantic_type == "instance":
 
-            return {
-                "type": RelationshipType.INSTANCE_METHOD_CALL,
-                "dispatch": "INSTANCE",
-                "confidence": min(
+            dispatch = "INSTANCE"
+
+            SemanticCallClassifier.validate_dispatch(dispatch)
+
+            return SemanticInferenceResult(
+                relationship_type=RelationshipType.INSTANCE_METHOD_CALL,
+                dispatch=dispatch,
+                confidence=min(
                     state.confidence,
                     0.95,
                 ),
-                "semantic_owner": state.model,
-                "framework_hint": state.framework_hint,
-                "provenance": "INSTANCE_ASSIGNMENT_PROPAGATION",
-                # IMPORTANTES
-                "resolved_call": f"{state.model}.{method}",
-                "inferred_symbol": state.inferred_symbol,
-            }
+                semantic_owner=state.model,
+                framework_hint=state.framework_hint,
+                provenance="INSTANCE_ASSIGNMENT_PROPAGATION",
+                resolved_call=f"{state.model}.{method}",
+                inferred_symbol=state.inferred_symbol,
+            )
 
         # =================================================
         # ATTRIBUTE CHAIN PROPAGATION
@@ -82,19 +95,22 @@ class SemanticInferenceEngineV2:
 
         if state.semantic_type == "attribute_chain":
 
-            return {
-                "type": RelationshipType.CHAINED_ATTRIBUTE_CALL,
-                "dispatch": "CHAIN",
-                "confidence": min(
+            dispatch = "CHAIN"
+
+            SemanticCallClassifier.validate_dispatch(dispatch)
+
+            return SemanticInferenceResult(
+                relationship_type=RelationshipType.CHAINED_ATTRIBUTE_CALL,
+                dispatch="CHAIN",
+                confidence=min(
                     state.confidence,
                     0.90,
                 ),
-                "semantic_owner": state.source,
-                "framework_hint": state.framework_hint,
-                "provenance": "ATTRIBUTE_CHAIN_PROPAGATION",
-                # IMPORTANTES
-                "resolved_call": f"{state.source}.{method}",
-                "inferred_symbol": state.inferred_symbol,
-            }
+                semantic_owner=state.source,
+                framework_hint=state.framework_hint,
+                provenance="ATTRIBUTE_CHAIN_PROPAGATION",
+                resolved_call=f"{state.source}.{method}",
+                inferred_symbol=state.inferred_symbol,
+            )
 
         return None

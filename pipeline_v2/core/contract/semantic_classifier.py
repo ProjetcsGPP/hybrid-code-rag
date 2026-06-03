@@ -3,6 +3,24 @@
 
 class SemanticCallClassifier:
 
+    VALID_DISPATCHES = {
+        "SELF",
+        "SUPER",
+        "ORM",
+        "FRAMEWORK",
+        "DIRECT",
+        "INSTANCE",
+        "CHAIN",
+    }
+
+    @classmethod
+    def validate_dispatch(cls, dispatch: str):
+
+        if dispatch not in cls.VALID_DISPATCHES:
+            raise ValueError(f"Unknown dispatch: {dispatch}")
+
+        return dispatch
+
     @staticmethod
     def classify(call: str):
         """
@@ -19,7 +37,6 @@ class SemanticCallClassifier:
         if "objects." in call:
             return "ORM_QUERY", "ORM"
 
-        # padrão framework / dotted calls
         if "." in call:
             return "FRAMEWORK_CALL", "FRAMEWORK"
 

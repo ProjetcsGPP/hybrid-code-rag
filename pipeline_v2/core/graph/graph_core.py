@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set
 
 from .graph_store import GraphStoreV2
-from .graph_index import GraphIndexV2
 from .graph_types import GraphNodeV2, GraphEdgeV2
 
 from pipeline_v2.core.audit.graph_mutation_auditor_v2 import MutationEvent
@@ -25,7 +24,6 @@ class GraphCoreV2:
         self.mutation_auditor = mutation_auditor
 
         self.store = GraphStoreV2()
-        self.index = GraphIndexV2()
 
         self.edges_by_source: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
         self.edges_by_target: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
@@ -37,6 +35,8 @@ class GraphCoreV2:
 
         self._node_ids: Set[str] = set()
         self._edge_ids: Set[str] = set()
+
+        self._external_node_ids: Set[str] = set()
 
     def set_mutation_auditor(self, auditor):
         self.mutation_auditor = auditor
@@ -54,6 +54,9 @@ class GraphCoreV2:
 
         if node_id.startswith("external::"):
 
+            if node_id in self._external_node_ids:
+                return self.store.get_node(node_id)
+
             external_node = GraphNodeV2(
                 id=node_id,
                 type="external",
@@ -65,6 +68,8 @@ class GraphCoreV2:
                     "lazy_materialized": True,
                 },
             )
+
+            self._external_node_ids.add(node_id)
 
             self.add_node(external_node)
 
@@ -107,8 +112,10 @@ class GraphCoreV2:
 
         self._node_ids.add(node.id)
 
+        if node.metadata.get("mode") == "EXTERNAL":
+            self._external_node_ids.add(node.id)
+
         self.store.add_node(node)
-        self.index.index_node(node)
 
     def get_node(self, node_id: str) -> Optional[GraphNodeV2]:
         return self.store.get_node(node_id)
@@ -295,9 +302,10 @@ class GraphCoreV2:
         if edge.target.startswith("UNRESOLVED::"):
             return False
 
-        # NOVO: aceita inferred/external mas marca como válida
-        if "external::" in edge.source or "external::" in edge.target:
-            return True
+        # external NÃO é inválido (incremental graph assumption)
+        # mas evita auto-loop lixo
+        if edge.source == edge.target and edge.source.startswith("external::"):
+            return False
 
         return True
 
@@ -309,11 +317,11 @@ class GraphCoreV2:
         self.store.nodes.clear()
         self.store.edges.clear()
 
-        self.index.reset()
-
         self.edges_by_source.clear()
         self.edges_by_target.clear()
         self.edges_by_type.clear()
 
         self._node_ids.clear()
         self._edge_ids.clear()
+
+        self._external_node_ids.clear()

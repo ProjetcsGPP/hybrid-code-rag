@@ -3,6 +3,9 @@
 from pipeline_v2.core.repository.scoped_relationship_repository_v2 import (
     ScopedRelationshipRepositoryV2,
 )
+from pipeline_v2.core.contract.contract_enforcer import (
+    ContractEnforcer,
+)
 
 
 class RelationshipWriterV2:
@@ -21,6 +24,8 @@ class RelationshipWriterV2:
         relationship,
         scope,
     ):
+
+        relationship = ContractEnforcer.enforce_relationship(relationship)
 
         self.repository.write_relationship(
             relationship,

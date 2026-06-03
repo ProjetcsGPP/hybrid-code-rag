@@ -3,6 +3,8 @@
 from .symbol_factory import SymbolFactoryV2
 from .symbol_types import SymbolType
 
+from pipeline_v2.core.contract.semantic_contract import SymbolContract
+
 
 class SymbolCoreV2:
 
@@ -37,6 +39,20 @@ class SymbolCoreV2:
 
         return symbol
 
+    def create_symbol_from_contract(
+        self,
+        contract: SymbolContract,
+    ):
+
+        return self.create_symbol(
+            name=contract.name,
+            type=contract.type,
+            file_path=contract.file_path,
+            canonical=contract.canonical,
+            parent=contract.parent,
+            metadata=contract.metadata,
+        )
+
     # =====================================================
     # LOOKUP (delegation only)
     # =====================================================
@@ -55,10 +71,7 @@ class SymbolCoreV2:
     # =====================================================
 
     def get_all_symbols(self):
-        return list(self.identity_registry.by_id.values())
+        return self.identity_registry.get_all()
 
     def clear_indexes(self):
-
-        self.identity_registry.by_id.clear()
-        self.identity_registry.by_name.clear()
-        self.identity_registry.by_canonical.clear()
+        self.identity_registry.clear()

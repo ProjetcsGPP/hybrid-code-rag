@@ -105,6 +105,9 @@ class IdentityRegistryV2:
         obj = self.by_canonical.get(canonical)
         return obj.id if obj else None
 
+    def get_all(self):
+        return list(self.by_id.values())
+
     # =====================================================
     # EXISTS
     # =====================================================
@@ -122,3 +125,12 @@ class IdentityRegistryV2:
             "names": len(self.by_name),
             "canonicals": len(self.by_canonical),
         }
+
+    # =====================================================
+    # CLEAR
+    # =====================================================
+
+    def clear(self):
+        self.by_id.clear()
+        self.by_name.clear()
+        self.by_canonical.clear()

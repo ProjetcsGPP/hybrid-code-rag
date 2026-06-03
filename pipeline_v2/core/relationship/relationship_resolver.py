@@ -3,6 +3,10 @@
 
 from .relationship_types import RelationshipType
 
+from pipeline_v2.core.contract.relationship_resolution_result import (
+    RelationshipResolutionResult,
+)
+
 
 class RelationshipResolverV2:
     """
@@ -34,17 +38,21 @@ class RelationshipResolverV2:
             semantic_data,
         )
 
-        return {
-            # compat V1
-            "relationship_type": rel_type,
-            "dispatch": dispatch,
-            "semantic": semantic_data,
-            # V2 extension
-            "layer": self._resolve_layer(rel_type, semantic_data),
-            "normalized_call": normalized_call,
-            "confidence": confidence,
-            "resolution_path": self._build_resolution_path(rel_type, semantic_data),
-        }
+        return RelationshipResolutionResult(
+            relationship_type=rel_type,
+            dispatch=dispatch,
+            semantic=semantic_data,
+            layer=self._resolve_layer(
+                rel_type,
+                semantic_data,
+            ),
+            normalized_call=normalized_call,
+            confidence=confidence,
+            resolution_path=self._build_resolution_path(
+                rel_type,
+                semantic_data,
+            ),
+        )
 
     # =====================================================
     # CLASSIFICATION (mantido + leve refinamento)

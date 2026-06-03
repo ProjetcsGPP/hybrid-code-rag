@@ -13,6 +13,17 @@ class SymbolAdapter:
     # -------------------------
     @staticmethod
     def from_ast(meta: Dict[str, Any]) -> SymbolContract:
+
+        required = [
+            "name",
+            "type",
+        ]
+
+        missing = [x for x in required if not meta.get(x)]
+
+        if missing:
+            raise ValueError(f"Invalid AST Symbol. Missing fields: {missing}")
+
         return SymbolContract(
             id=meta.get("symbol_path") or meta.get("chunk_id"),
             name=meta.get("name"),

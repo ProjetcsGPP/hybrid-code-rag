@@ -3,6 +3,9 @@
 from pipeline_v2.core.repository.scoped_symbol_repository_v2 import (
     ScopedSymbolRepositoryV2,
 )
+from pipeline_v2.core.contract.contract_enforcer import (
+    ContractEnforcer,
+)
 
 
 class SymbolWriterV2:
@@ -21,6 +24,8 @@ class SymbolWriterV2:
         symbol,
         scope,
     ):
+
+        symbol = ContractEnforcer.enforce_symbol(symbol)
 
         self.repository.upsert_symbol(
             symbol,

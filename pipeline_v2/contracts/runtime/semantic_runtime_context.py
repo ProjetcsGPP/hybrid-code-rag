@@ -26,6 +26,8 @@ class SemanticRuntimeContext:
     @property
     def namespace(self) -> str:
 
+        self.validate()
+
         parts = [
             self.workspace_id,
             self.project_id,
@@ -36,3 +38,16 @@ class SemanticRuntimeContext:
             parts.append(self.branch)
 
         return ".".join(parts)
+
+    def validate(self):
+
+        if not self.workspace_id:
+            raise ValueError("workspace_id required")
+
+        if not self.project_id:
+            raise ValueError("project_id required")
+
+        if not self.repository_id:
+            raise ValueError("repository_id required")
+
+        return self

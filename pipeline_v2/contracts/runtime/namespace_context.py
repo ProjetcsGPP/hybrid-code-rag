@@ -24,6 +24,8 @@ class NamespaceContext:
     @property
     def namespace(self) -> str:
 
+        self.validate()
+
         parts = [
             self.workspace_id,
             self.project_id,
@@ -40,4 +42,20 @@ class NamespaceContext:
         symbol_name: str,
     ) -> str:
 
+        if not symbol_name:
+            raise ValueError("symbol_name required")
+
         return f"{self.namespace}.{symbol_name}"
+
+    def validate(self):
+
+        if not self.workspace_id:
+            raise ValueError("workspace_id required")
+
+        if not self.project_id:
+            raise ValueError("project_id required")
+
+        if not self.repository_id:
+            raise ValueError("repository_id required")
+
+        return self

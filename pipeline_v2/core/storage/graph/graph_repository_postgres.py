@@ -26,6 +26,9 @@ class GraphRepositoryPostgresV2:
 
     def save_node(self, node: NodeRecordV2):
 
+        if not isinstance(node, NodeRecordV2):
+            raise TypeError(f"Expected NodeRecordV2, got {type(node)}")
+
         cursor = self.conn.cursor()
 
         cursor.execute(
@@ -74,6 +77,9 @@ class GraphRepositoryPostgresV2:
     # =====================================================
 
     def save_edge(self, edge: EdgeRecordV2):
+
+        if not isinstance(edge, EdgeRecordV2):
+            raise TypeError(f"Expected EdgeRecordV2, got {type(edge)}")
 
         cursor = self.conn.cursor()
 

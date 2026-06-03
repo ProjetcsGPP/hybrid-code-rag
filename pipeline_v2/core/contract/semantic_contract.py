@@ -14,6 +14,7 @@ class ChunkContract:
     name: str
     type: str
     raw_calls: List[str] = field(default_factory=list)
+    assignments: List[dict] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 

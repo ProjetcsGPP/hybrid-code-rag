@@ -6,6 +6,10 @@ from ..graph.graph_types import GraphNodeV2, GraphEdgeV2
 from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 
 from pipeline_v2.core.identity.identity_service_v2 import IdentityServiceV2
+from pipeline_v2.core.symbol.symbol_models import SymbolV2
+from pipeline_v2.core.relationship.relationship_models import (
+    RelationshipV2,
+)
 
 
 class GraphBuilderV2:
@@ -93,11 +97,21 @@ class GraphBuilderV2:
         edges = []
 
         # 1. symbols
+        ContractEnforcer.enforce_list(
+            context.symbols,
+            SymbolV2,
+        )
+
         for symbol in context.symbols:
             symbol = ContractEnforcer.enforce_symbol(symbol)
             self.ingest_symbol(symbol)
 
         # 2. relationships
+        ContractEnforcer.enforce_list(
+            context.relationships,
+            RelationshipV2,
+        )
+
         for rel in context.relationships:
             rel = ContractEnforcer.enforce_relationship(rel)
 
@@ -111,3 +125,14 @@ class GraphBuilderV2:
             "edges_created": len(edges),
             "nodes_created": len(self.graph_core.store.nodes),
         }
+
+    # -------------------------
+    # BUILD (SINGLE ENTRY POINT)
+    # -------------------------
+
+    def build(self, semantic_payload):
+        graph = self._build_graph(semantic_payload)
+
+        self._persist(graph)  # ÚNICO ponto de escrita
+
+        return graph

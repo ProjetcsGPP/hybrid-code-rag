@@ -58,9 +58,7 @@ class RuntimeContextV2:
         # IDENTITY REGISTRY
         # -------------------------
 
-        self.identity_registry.by_id.clear()
-        self.identity_registry.by_name.clear()
-        self.identity_registry.by_canonical.clear()
+        self.identity_registry.clear()
 
     # =====================================================
     # STATS

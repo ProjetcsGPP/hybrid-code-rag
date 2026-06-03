@@ -9,6 +9,8 @@ from pydantic import BaseModel
 
 from pipeline_v2.application.pipeline_bridge import PipelineBridgeV2
 
+from pipeline_v2.application.bootstrap_runtime import global_runtime
+
 router = APIRouter()
 graph = graph_runtime
 serializer = GraphSerializer()
@@ -89,7 +91,7 @@ class IngestRequest(BaseModel):
 @router.post("/ingest")
 def ingest_file(req: IngestRequest):
 
-    bridge = PipelineBridgeV2()
+    bridge = PipelineBridgeV2(global_runtime)
 
     result = bridge.run(req.file_path)
 

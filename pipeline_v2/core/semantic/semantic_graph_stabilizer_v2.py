@@ -48,8 +48,12 @@ class SemanticGraphStabilizerV2:
     # =====================================================
 
     def _key(self, edge):
-
-        return f"{edge.source}|{edge.target}|{edge.raw_call}"
+        return (
+            f"{edge.source}|"
+            f"{edge.target}|"
+            f"{edge.type if hasattr(edge, 'type') else 'unknown'}|"
+            f"{getattr(edge, 'raw_call', '')}"
+        )
 
     # =====================================================
     # MERGE LOGIC
