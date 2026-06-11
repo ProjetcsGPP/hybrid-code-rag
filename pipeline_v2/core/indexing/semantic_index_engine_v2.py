@@ -1,7 +1,10 @@
 # pipeline_v2/core/indexing/semantic_index_engine_v2.py
 
 from collections import defaultdict
-from typing import Dict, List, Set, Any, Optional
+from typing import Dict, List, Set, Optional
+
+from pipeline_v2.core.contract.graph_contracts import GraphSubgraphV2
+from pipeline_v2.core.graph.graph_types import GraphEdgeV2, GraphNodeV2
 
 
 class SemanticIndexEngineV2:
@@ -21,11 +24,12 @@ class SemanticIndexEngineV2:
         self.adjacency: Dict[str, Set[str]] = defaultdict(set)
 
         # node → incoming/outgoing categorization
-        self.incoming: Dict[str, List[dict]] = defaultdict(list)
-        self.outgoing: Dict[str, List[dict]] = defaultdict(list)
+        self.incoming: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
+        self.outgoing: Dict[str, List[GraphEdgeV2]] = defaultdict(list)
+        self.nodes_by_id: Dict[str, GraphNodeV2] = {}
 
         # node → semantic neighborhood cache
-        self.neighborhood_cache: Dict[str, Dict[str, Any]] = {}
+        self.neighborhood_cache: Dict[str, GraphSubgraphV2] = {}
 
     # =====================================================
     # BUILD INDEX
@@ -33,8 +37,8 @@ class SemanticIndexEngineV2:
 
     def build(
         self,
-        nodes: List[dict],
-        edges: List[dict],
+        nodes: List[GraphNodeV2],
+        edges: List[GraphEdgeV2],
     ):
 
         # normalize node IDs via registry (se existir)
@@ -47,8 +51,8 @@ class SemanticIndexEngineV2:
 
         for edge in edges:
 
-            source = edge.get("source")
-            target = edge.get("target")
+            source = edge.source
+            target = edge.target
 
             if not source or not target:
                 continue
@@ -66,43 +70,51 @@ class SemanticIndexEngineV2:
 
         for node in nodes:
 
-            node_id = node.get("id")
+            node_id = node.id
             if not node_id:
                 continue
 
+            self.nodes_by_id[node_id] = node
             self.neighborhood_cache[node_id] = self._build_neighborhood(node_id)
 
     # =====================================================
     # NEIGHBORHOOD BUILDER
     # =====================================================
 
-    def _build_neighborhood(self, node_id: str) -> Dict[str, Any]:
+    def _build_neighborhood(self, node_id: str) -> GraphSubgraphV2:
 
-        direct_neighbors = self.adjacency.get(node_id, set())
+        direct_neighbors = (
+            self.adjacency[node_id] if node_id in self.adjacency else set()
+        )
 
-        incoming = self.incoming.get(node_id, [])
-        outgoing = self.outgoing.get(node_id, [])
+        incoming = self.incoming[node_id] if node_id in self.incoming else []
+        outgoing = self.outgoing[node_id] if node_id in self.outgoing else []
 
         # categorize neighbors by depth (simple v1 heuristic)
         expanded = set(direct_neighbors)
 
         for n in list(direct_neighbors):
-            expanded.update(self.adjacency.get(n, set()))
+            expanded.update(self.adjacency[n] if n in self.adjacency else set())
 
-        return {
-            "node_id": node_id,
-            "direct_neighbors": list(direct_neighbors),
-            "expanded_neighbors": list(expanded),
-            "incoming_edges": incoming,
-            "outgoing_edges": outgoing,
-        }
+        neighborhood_nodes = [
+            self.nodes_by_id[n] for n in expanded if n in self.nodes_by_id
+        ]
+
+        return GraphSubgraphV2(
+            nodes=neighborhood_nodes,
+            edges=incoming + outgoing,
+        )
 
     # =====================================================
     # QUERY API (FUTURE RAG USE)
     # =====================================================
 
-    def get_neighborhood(self, node_id: str) -> Optional[Dict[str, Any]]:
-        return self.neighborhood_cache.get(node_id)
+    def get_neighborhood(self, node_id: str) -> Optional[GraphSubgraphV2]:
+        return (
+            self.neighborhood_cache[node_id]
+            if node_id in self.neighborhood_cache
+            else None
+        )
 
     # =====================================================
     # CONTEXT EXPANSION
@@ -123,7 +135,9 @@ class SemanticIndexEngineV2:
 
                 visited.add(n)
 
-                next_frontier.update(self.adjacency.get(n, set()))
+                next_frontier.update(
+                    self.adjacency[n] if n in self.adjacency else set()
+                )
 
             frontier = next_frontier
 
@@ -135,9 +149,9 @@ class SemanticIndexEngineV2:
 
     def score_relevance(self, node_id: str) -> float:
 
-        neighbors = len(self.adjacency.get(node_id, []))
-        incoming = len(self.incoming.get(node_id, []))
-        outgoing = len(self.outgoing.get(node_id, []))
+        neighbors = len(self.adjacency[node_id] if node_id in self.adjacency else [])
+        incoming = len(self.incoming[node_id] if node_id in self.incoming else [])
+        outgoing = len(self.outgoing[node_id] if node_id in self.outgoing else [])
 
         # simple structural importance heuristic (v1)
         return float(neighbors * 0.4 + incoming * 0.3 + outgoing * 0.3)
@@ -152,13 +166,13 @@ class SemanticIndexEngineV2:
 
         for n in nodes:
 
-            canonical = n.get("canonical")
+            canonical = n.canonical
 
             if self.registry and canonical:
                 reg = self.registry.get_by_canonical(canonical)
 
                 if reg:
-                    n["id"] = reg["symbol_id"]
+                    n.id = reg["symbol_id"]
 
             resolved.append(n)
 

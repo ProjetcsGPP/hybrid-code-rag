@@ -7,6 +7,9 @@ from .graph_store import GraphStoreV2
 from .graph_types import GraphNodeV2, GraphEdgeV2
 
 from pipeline_v2.core.audit.graph_mutation_auditor_v2 import MutationEvent
+from pipeline_v2.core.graph.boundary.graph_boundary_enforcer_v2 import (
+    GraphBoundaryEnforcerV2,
+)
 
 
 class GraphCoreV2:
@@ -22,6 +25,8 @@ class GraphCoreV2:
     def __init__(self, mutation_auditor=None):
 
         self.mutation_auditor = mutation_auditor
+
+        self.boundary = GraphBoundaryEnforcerV2()
 
         self.store = GraphStoreV2()
 
@@ -42,6 +47,12 @@ class GraphCoreV2:
         self.mutation_auditor = auditor
 
     def _ensure_node_exists(self, node_id: str):
+
+        # HARD BOUNDARY RULE: no dirty nodes in graph core
+        if node_id.startswith("UNRESOLVED::"):
+            return None
+
+        # external nodes são aceitos, mas só via lazy materialization
 
         existing = self.store.get_node(node_id)
 
@@ -87,6 +98,8 @@ class GraphCoreV2:
         - unique node identity
         - canonical stability
         """
+        if not self.boundary.allow_node(node.id, node):
+            return
 
         if self.mutation_auditor:
 
@@ -132,6 +145,9 @@ class GraphCoreV2:
         - duplicate prevention
         """
 
+        if not self.boundary.allow_edge(edge):
+            return
+
         if self.mutation_auditor:
 
             decision = self.mutation_auditor.audit(
@@ -172,6 +188,15 @@ class GraphCoreV2:
         source_node = self._ensure_node_exists(edge.source)
         target_node = self._ensure_node_exists(edge.target)
 
+        print(
+            "EDGE REJECTED",
+            edge.id,
+            edge.source,
+            source_node,
+            edge.target,
+            target_node,
+        )
+
         if not source_node or not target_node:
             return
 
@@ -208,8 +233,16 @@ class GraphCoreV2:
 
     def trace(self, node_id: str):
         return {
-            "from": self.edges_by_source.get(node_id, []),
-            "to": self.edges_by_target.get(node_id, []),
+            "from": (
+                self.edges_by_source[node_id]
+                if node_id in self.edges_by_source
+                else []
+            ),
+            "to": (
+                self.edges_by_target[node_id]
+                if node_id in self.edges_by_target
+                else []
+            ),
         }
 
     # =====================================================
@@ -222,7 +255,11 @@ class GraphCoreV2:
         layer: Optional[str] = None,
         status: Optional[str] = None,
     ):
-        edges = self.edges_by_source.get(node_id, [])
+        edges = (
+            self.edges_by_source[node_id]
+            if node_id in self.edges_by_source
+            else []
+        )
 
         if layer:
             edges = [e for e in edges if getattr(e, "layer", None) == layer]
@@ -256,7 +293,11 @@ class GraphCoreV2:
                 if node:
                     nodes[node.id] = node
 
-                for e in self.edges_by_source.get(nid, []):
+                for e in (
+                    self.edges_by_source[nid]
+                    if nid in self.edges_by_source
+                    else []
+                ):
                     edges.append(e)
                     next_frontier.append(e.target)
 
@@ -271,8 +312,19 @@ class GraphCoreV2:
     # EDGE QUERY
     # =====================================================
 
+    def get_edges(self):
+        """
+        Test-only safe accessor.
+        Returns all persisted edges.
+        """
+        return list(self.store.edges.values())
+
     def get_edges_by_type(self, edge_type: str):
-        return self.edges_by_type.get(edge_type, [])
+        return (
+            self.edges_by_type[edge_type]
+            if edge_type in self.edges_by_type
+            else []
+        )
 
     # =====================================================
     # FULL TRACE

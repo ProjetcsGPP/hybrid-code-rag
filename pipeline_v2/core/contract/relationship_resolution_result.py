@@ -2,10 +2,13 @@
 
 
 from dataclasses import dataclass, field
-from typing import Dict, Any
 
 from pipeline_v2.core.relationship.relationship_types import (
     RelationshipType,
+)
+
+from pipeline_v2.core.contract.semantic_resolution_payload import (
+    SemanticResolutionPayload,
 )
 
 
@@ -32,13 +35,19 @@ class RelationshipResolutionResult:
 
     resolution_path: str
 
-    semantic: Dict[str, Any] = field(default_factory=dict)
+    semantic: SemanticResolutionPayload = field(
+        default_factory=SemanticResolutionPayload
+    )
 
     def to_dict(self) -> dict:
         return {
-            "relationship_type": self.relationship_type,
+            "relationship_type": (
+                self.relationship_type.value
+                if hasattr(self.relationship_type, "value")
+                else self.relationship_type
+            ),
             "dispatch": self.dispatch,
-            "semantic": self.semantic,
+            "semantic": (self.semantic.to_dict() if self.semantic else None),
             "layer": self.layer,
             "normalized_call": self.normalized_call,
             "confidence": self.confidence,

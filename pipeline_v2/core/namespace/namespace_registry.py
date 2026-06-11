@@ -21,4 +21,8 @@ class NamespaceRegistry:
         namespace_id: str,
     ) -> SemanticNamespace | None:
 
-        return self._namespaces.get(namespace_id)
+        return (
+            self._namespaces[namespace_id]
+            if namespace_id in self._namespaces
+            else None
+        )

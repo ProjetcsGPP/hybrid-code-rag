@@ -6,6 +6,17 @@ from .relationship_types import RelationshipType
 from pipeline_v2.core.contract.relationship_resolution_result import (
     RelationshipResolutionResult,
 )
+from pipeline_v2.core.semantic.semantic_authority import (
+    SemanticAuthority,
+)
+
+from pipeline_v2.core.contract.semantic_classifier import (
+    SemanticCallClassifier,
+)
+
+from pipeline_v2.core.contract.semantic_resolution_payload import (
+    SemanticResolutionPayload,
+)
 
 
 class RelationshipResolverV2:
@@ -24,7 +35,11 @@ class RelationshipResolverV2:
         Entry point compatível com V1 + extensão V2.
         """
 
-        rel_type, dispatch = self._classify(raw_call)
+        self.semantic_authority = SemanticAuthority()
+
+        self.semantic_classifier = SemanticCallClassifier()
+
+        rel_type, dispatch = self.semantic_classifier.classify(raw_call)
 
         semantic_data = self._resolve_semantic_owner(
             raw_call,
@@ -55,26 +70,6 @@ class RelationshipResolverV2:
         )
 
     # =====================================================
-    # CLASSIFICATION (mantido + leve refinamento)
-    # =====================================================
-
-    def _classify(self, raw_call: str):
-
-        if raw_call.startswith("self."):
-            return RelationshipType.SELF_CALL, "SELF"
-
-        if raw_call.startswith("super."):
-            return RelationshipType.SUPER_CALL, "SUPER"
-
-        if "objects." in raw_call:
-            return RelationshipType.ORM_QUERY, "ORM"
-
-        if "." in raw_call:
-            return RelationshipType.FRAMEWORK_CALL, "FRAMEWORK"
-
-        return RelationshipType.CALLS, "DIRECT"
-
-    # =====================================================
     # SEMANTIC RESOLUTION (melhorado mas compatível)
     # =====================================================
 
@@ -85,44 +80,51 @@ class RelationshipResolverV2:
     ):
 
         if not semantic_context:
-            return {}
+            return None
 
         if "." not in raw_call:
-            return {}
+            return None
 
         owner, method = raw_call.split(".", 1)
 
-        state = semantic_context.get(owner)
+        state = semantic_context.resolve_variable(owner)
 
         if not state:
-            return {}
+            return None
 
-        resolved_symbol = state.inferred_symbol or state.model or state.source
+        decision = self.semantic_authority.decide(state, None)
+
+        resolved_symbol = state.inferred_symbol or decision.model or state.source
 
         resolved_call = f"{resolved_symbol}.{method}" if resolved_symbol else raw_call
 
-        return {
-            "resolved_owner": state.source,
-            "semantic_type": state.semantic_type,
-            "model": state.model,
-            "inferred_symbol": state.inferred_symbol,
-            "framework_hint": state.framework_hint,
-            "confidence": state.confidence,
-            "provenance": state.provenance,
-            "resolved_call": resolved_call,
-            "metadata": state.metadata,
-        }
+        return SemanticResolutionPayload(
+            resolved_owner=state.source,
+            semantic_type=decision.semantic_type,
+            model=decision.model,
+            dispatch=decision.dispatch,
+            inferred_symbol=state.inferred_symbol,
+            framework_hint=state.framework_hint,
+            confidence=decision.confidence,
+            provenance=decision.provenance,
+            resolved_call=resolved_call,
+            metadata=state.metadata,
+        )
 
     # =====================================================
     # V2: NORMALIZATION LAYER
     # =====================================================
 
-    def _normalize_call(self, raw_call: str, semantic_data: dict):
+    def _normalize_call(
+        self,
+        raw_call: str,
+        semantic_data: SemanticResolutionPayload | None,
+    ):
 
-        if not semantic_data:
+        if semantic_data is None:
             return raw_call
 
-        return semantic_data.get("resolved_call", raw_call)
+        return semantic_data.resolved_call or raw_call
 
     # =====================================================
     # V2: LAYER RESOLUTION
@@ -130,7 +132,7 @@ class RelationshipResolverV2:
 
     def _resolve_layer(self, rel_type, semantic_data: dict):
 
-        if semantic_data.get("confidence", 0) > 0.85:
+        if semantic_data and semantic_data.confidence > 0.85:
             return "SEMANTIC_RESOLVED"
 
         if rel_type == RelationshipType.ORM_QUERY:
@@ -159,7 +161,7 @@ class RelationshipResolverV2:
         elif rel_type == RelationshipType.ORM_QUERY:
             base = 0.8
 
-        semantic_boost = semantic_data.get("confidence", 0.0)
+        semantic_boost = semantic_data.confidence if semantic_data else 0.0
 
         return min(1.0, base * 0.7 + semantic_boost * 0.3)
 

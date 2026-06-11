@@ -1,9 +1,13 @@
 # pipeline_v2/core/retrieval/semantic_retriever_engine_v2.py
 
-from typing import Dict, List, Any, Set  # , Tuple, Optional
+from typing import Dict, List, Set
 
 # from collections import defaultdict
 
+from pipeline_v2.core.contract.graph_contracts import (
+    GraphRetrievalResultV2,
+    GraphSubgraphV2,
+)
 from pipeline_v2.core.indexing.semantic_index_engine_v2 import SemanticIndexEngineV2
 
 
@@ -32,7 +36,7 @@ class SemanticRetrieverEngineV2:
         query_node_id: str,
         depth: int = 2,
         top_k: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> GraphRetrievalResultV2:
 
         # -------------------------------------------------
         # STEP 1: SEED CONTEXT
@@ -70,11 +74,11 @@ class SemanticRetrieverEngineV2:
 
         subgraph = self._build_subgraph(top_nodes)
 
-        return {
-            "seed": seed,
-            "ranked_nodes": ranked,
-            "subgraph": subgraph,
-        }
+        return GraphRetrievalResultV2(
+            seed=seed,
+            ranked_nodes=ranked,
+            subgraph=subgraph,
+        )
 
     # =====================================================
     # SEED RESOLUTION
@@ -106,7 +110,7 @@ class SemanticRetrieverEngineV2:
             neighborhood = self.index.get_neighborhood(node_id)
 
             if neighborhood:
-                boost = len(neighborhood["direct_neighbors"]) * 0.2
+                boost = len(neighborhood.nodes) * 0.2
             else:
                 boost = 0
 
@@ -118,12 +122,13 @@ class SemanticRetrieverEngineV2:
     # SUBGRAPH BUILDER
     # =====================================================
 
-    def _build_subgraph(self, node_ids: List[str]) -> Dict[str, Any]:
+    def _build_subgraph(self, node_ids: List[str]) -> GraphSubgraphV2:
 
         nodes = []
         edges = []
 
         seen_edges = set()
+        seen_nodes = set()
 
         for node_id in node_ids:
 
@@ -133,12 +138,14 @@ class SemanticRetrieverEngineV2:
                 continue
 
             # include node itself
-            nodes.append(node_id)
+            if node_id in self.index.nodes_by_id and node_id not in seen_nodes:
+                nodes.append(self.index.nodes_by_id[node_id])
+                seen_nodes.add(node_id)
 
             # include edges
-            for edge in neighborhood["incoming_edges"] + neighborhood["outgoing_edges"]:
+            for edge in neighborhood.edges:
 
-                edge_id = edge.get("id")
+                edge_id = edge.id
 
                 if edge_id in seen_edges:
                     continue
@@ -146,22 +153,19 @@ class SemanticRetrieverEngineV2:
                 seen_edges.add(edge_id)
                 edges.append(edge)
 
-        return {
-            "nodes": list(set(nodes)),
-            "edges": edges,
-        }
+        return GraphSubgraphV2(nodes=nodes, edges=edges)
 
     # =====================================================
     # CONTEXT SUMMARY (HOOK FUTURO LLM)
     # =====================================================
 
-    def build_context_summary(self, subgraph: Dict[str, Any]) -> Dict[str, Any]:
+    def build_context_summary(self, subgraph: GraphSubgraphV2) -> Dict[str, object]:
         """
         Placeholder para futura camada LLM / summarization.
         """
 
         return {
-            "node_count": len(subgraph.get("nodes", [])),
-            "edge_count": len(subgraph.get("edges", [])),
+            "node_count": len(subgraph.nodes),
+            "edge_count": len(subgraph.edges),
             "summary": "semantic context ready",
         }

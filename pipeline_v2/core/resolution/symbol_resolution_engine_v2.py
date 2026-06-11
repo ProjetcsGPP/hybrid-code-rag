@@ -2,6 +2,11 @@
 
 from typing import Dict, Any
 
+from pipeline_v2.core.identity.resolution_workflow_v2 import (
+    ResolutionEventV2,
+    ResolutionEventTypeV2,
+)
+
 
 class SymbolResolutionEngineV2:
     """
@@ -210,9 +215,7 @@ class SymbolResolutionEngineV2:
         if not semantic_data:
             return None
 
-        resolved_call = semantic_data.get(
-            "resolved_call",
-        )
+        resolved_call = semantic_data.resolved_call if semantic_data else None
 
         if not resolved_call:
             return None
@@ -228,4 +231,9 @@ class SymbolResolutionEngineV2:
 
     def build_unresolved(self, call: str):
 
-        return f"UNRESOLVED::{call}"
+        return ResolutionEventV2(
+            event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
+            source=call,
+            target=None,
+            context={"reason": "no_match"},
+        )

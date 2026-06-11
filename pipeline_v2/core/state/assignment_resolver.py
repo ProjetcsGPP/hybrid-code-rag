@@ -1,5 +1,4 @@
-# pipeline_v2/core/state/assignment_resolver.py
-
+from pipeline_v2.core.contract.graph_contracts import AssignmentContractV2
 from pipeline_v2.core.state.variable_state import VariableState
 
 
@@ -31,60 +30,43 @@ class AssignmentResolverV2:
         "objects.create",
     }
 
-    def resolve(self, assignment: dict):
+    def resolve(self, assignment: AssignmentContractV2):
 
-        variable = assignment.get("variable")
-
+        variable = assignment.variable
         if not variable:
             return None
 
-        source = assignment.get("source")
+        source = assignment.source
+        if not source:
+            return None
 
-        semantic_type = assignment.get(
-            "semantic_type",
-            "unknown",
-        )
+        semantic_type = assignment.semantic_type
+        model = assignment.model
+        confidence = assignment.confidence
+        framework_hint = assignment.framework_hint
 
-        model = assignment.get("model")
-
-        confidence = assignment.get(
-            "confidence",
-            0.50,
-        )
-
-        framework_hint = assignment.get(
-            "framework_hint",
-        )
-
-        # ---------------------------------------------------------
-        # INSTANCE CONSTRUCTOR INFERENCE
-        # ---------------------------------------------------------
-
-        inferred = self._infer_instance_type(source)
-
-        if inferred:
-
+        # =========================================================
+        # INSTANCE INFERENCE (PRIORIDADE ALTA)
+        # =========================================================
+        if self._is_instance(source):
             semantic_type = "instance"
-
             model = source
-
             confidence = max(confidence, 0.85)
 
-        # ---------------------------------------------------------
-        # QUERYSET INFERENCE
-        # ---------------------------------------------------------
-
+        # =========================================================
+        # QUERYSET INFERENCE (OVERRIDES INSTANCE SE DETECTADO)
+        # =========================================================
         queryset_model = self._infer_queryset_model(source)
-
         if queryset_model:
-
             semantic_type = "queryset"
-
             model = queryset_model
-
             framework_hint = "django"
-
             confidence = max(confidence, 0.90)
+
+        # =========================================================
+        # NORMALIZAÇÃO FINAL DE CONSISTÊNCIA
+        # =========================================================
+        semantic_type = self._normalize_semantic_type(semantic_type)
 
         return VariableState(
             name=variable,
@@ -97,10 +79,9 @@ class AssignmentResolverV2:
         )
 
     # =========================================================
-    # INSTANCE INFERENCE
+    # INSTANCE DETECTION
     # =========================================================
-
-    def _infer_instance_type(self, source):
+    def _is_instance(self, source: str) -> bool:
 
         if not source:
             return False
@@ -108,31 +89,34 @@ class AssignmentResolverV2:
         if "." in source:
             return False
 
-        for hint in self.BUILTIN_INSTANCE_HINTS:
-
-            if source.endswith(hint):
-                return True
-
-        if source[:1].isupper():
-            return True
-
-        return False
+        return source[:1].isupper() or any(
+            source.endswith(h) for h in self.BUILTIN_INSTANCE_HINTS
+        )
 
     # =========================================================
-    # QUERYSET INFERENCE
+    # QUERYSET DETECTION
     # =========================================================
-
-    def _infer_queryset_model(self, source):
+    def _infer_queryset_model(self, source: str):
 
         if not source:
             return None
 
         for hint in self.ORM_QUERYSET_HINTS:
-
             if hint in source:
-
-                model = source.split(".")[0]
-
-                return model
+                return source.split(".")[0]
 
         return None
+
+    # =========================================================
+    # NORMALIZAÇÃO SEMÂNTICA (CRÍTICO)
+    # =========================================================
+    def _normalize_semantic_type(self, semantic_type: str) -> str:
+
+        valid = {
+            "instance",
+            "queryset",
+            "attribute_chain",
+            "unknown",
+        }
+
+        return semantic_type if semantic_type in valid else "unknown"

@@ -2,6 +2,8 @@
 
 from typing import Dict, Any
 
+from pipeline_v2.core.contract.graph_contracts import GraphAnalysisInputV2
+
 
 class AutonomousCodeAgentV2:
     """
@@ -40,12 +42,14 @@ class AutonomousCodeAgentV2:
         trace_analysis = self.trace_analyzer.analyze(runtime)
 
         # 4. REASONING
-        reasoning = self.reasoning_engine.reason(subgraph)
+        reasoning = self.reasoning_engine.reason(
+            GraphAnalysisInputV2(nodes=subgraph.nodes, edges=subgraph.edges)
+        )
 
         # 5. HYBRID RANKING
         ranking = self.relevance_engine.rank(
-            nodes=subgraph.get("nodes", []),
-            edges=subgraph.get("edges", []),
+            nodes=subgraph.nodes,
+            edges=subgraph.edges,
             runtime_trace=runtime,
             reasoning=reasoning,
         )

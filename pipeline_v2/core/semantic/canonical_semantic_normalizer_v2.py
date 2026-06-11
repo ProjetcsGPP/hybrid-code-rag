@@ -11,11 +11,15 @@ class CanonicalSemanticNormalizerV2:
     Gera representação única e canônica.
     """
 
-    def normalize(self, relationships: list) -> list:
+    def normalize(self, edges):
+        if not isinstance(edges, list):
+            return []
 
         normalized = []
 
-        for rel in relationships:
+        for rel in edges:
+            if not isinstance(rel, dict):
+                continue
             normalized.append(self._normalize(rel))
 
         return normalized

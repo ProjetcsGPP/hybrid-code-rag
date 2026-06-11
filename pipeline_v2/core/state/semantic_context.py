@@ -2,6 +2,7 @@
 
 from typing import Dict, Optional
 
+from pipeline_v2.core.contract.graph_contracts import AssignmentContractV2
 from pipeline_v2.core.state.variable_state import VariableState
 
 
@@ -35,14 +36,14 @@ class SemanticContextV2:
     # -------------------------
     # GET VARIABLE
     # -------------------------
-    def get(self, name: str) -> Optional[VariableState]:
+    def resolve_variable(self, name: str) -> Optional[VariableState]:
 
-        return self.variables.get(name)
+        return self.variables[name] if name in self.variables else None
 
     # -------------------------
     # ASSIGNMENT HYDRATION
     # -------------------------
-    def update_from_assignments(self, assignments: list):
+    def update_from_assignments(self, assignments: list[AssignmentContractV2]):
         """
         Converte assignments AST já existentes
         em estado semântico transitório.
@@ -53,18 +54,18 @@ class SemanticContextV2:
 
         for a in assignments:
 
-            var = a.get("variable")
+            var = a.variable
 
             if not var:
                 continue
 
             state = VariableState(
                 name=var,
-                source=a.get("source"),
-                semantic_type=a.get("semantic_type", "unknown"),
-                model=a.get("model"),
-                confidence=a.get("confidence", 0.75),
-                framework_hint=a.get("framework_hint"),
+                source=a.source,
+                semantic_type=a.semantic_type,
+                model=a.model,
+                confidence=a.confidence,
+                framework_hint=a.framework_hint,
                 provenance="ASSIGNMENT_TRACKING",
                 metadata={"raw_assignment": a},
             )
@@ -76,4 +77,7 @@ class SemanticContextV2:
     # -------------------------
     def dump(self):
 
-        return {k: vars(v) for k, v in self.variables.items()}
+        return self.as_dict()
+
+    def as_dict(self):
+        return {k: v.to_dict() for k, v in self.variables.items()}

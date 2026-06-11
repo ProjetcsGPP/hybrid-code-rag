@@ -68,8 +68,8 @@ class IdentityGraphAuditorV2:
 
         for node in graph_nodes.values():
 
-            meta = getattr(node, "metadata", {}) or {}
-            mode = meta.get("mode", "STRICT")
+            metadata = getattr(node, "metadata", {}) or {}
+            mode = metadata["mode"] if "mode" in metadata else "STRICT"
 
             by_source[mode] += 1
 

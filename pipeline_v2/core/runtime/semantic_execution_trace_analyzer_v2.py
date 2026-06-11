@@ -1,7 +1,13 @@
 # pipeline_v2/core/runtime/semantic_execution_trace_analyzer_v2.py
 
-from typing import Dict, List, Any  # , Set
+from typing import Dict, List  # , Set
 from collections import defaultdict
+
+from pipeline_v2.core.contract.graph_contracts import (
+    ClassifiedRuntimeTraceEventV2,
+    RuntimeExecutionResultV2,
+    RuntimeTraceEventV2,
+)
 
 
 class SemanticExecutionTraceAnalyzerV2:
@@ -24,9 +30,9 @@ class SemanticExecutionTraceAnalyzerV2:
     # ENTRY POINT
     # =====================================================
 
-    def analyze(self, runtime_output: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze(self, runtime_output: RuntimeExecutionResultV2) -> Dict[str, object]:
 
-        trace = runtime_output.get("trace", [])
+        trace = runtime_output.trace
 
         classified = self._classify_flow(trace)
         patterns = self._detect_patterns(trace)
@@ -42,7 +48,10 @@ class SemanticExecutionTraceAnalyzerV2:
     # 1. FLOW CLASSIFICATION
     # =====================================================
 
-    def _classify_flow(self, trace: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _classify_flow(
+        self,
+        trace: List[RuntimeTraceEventV2],
+    ) -> List[ClassifiedRuntimeTraceEventV2]:
 
         result = []
 
@@ -50,13 +59,21 @@ class SemanticExecutionTraceAnalyzerV2:
 
             flow_type = self._infer_flow_type(event)
 
-            result.append({**event, "flow_type": flow_type})
+            result.append(
+                ClassifiedRuntimeTraceEventV2(
+                    source=event.source,
+                    target=event.target,
+                    type=event.type,
+                    state=event.state,
+                    flow_type=flow_type,
+                )
+            )
 
         return result
 
-    def _infer_flow_type(self, event: Dict[str, Any]) -> str:
+    def _infer_flow_type(self, event: RuntimeTraceEventV2) -> str:
 
-        edge_type = event.get("type", "")
+        edge_type = event.type
 
         if edge_type in ["CALLS"]:
             return "CONTROL_FLOW"
@@ -73,14 +90,14 @@ class SemanticExecutionTraceAnalyzerV2:
     # 2. PATTERN DETECTION
     # =====================================================
 
-    def _detect_patterns(self, trace: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _detect_patterns(self, trace: List[RuntimeTraceEventV2]) -> Dict[str, object]:
 
         outgoing = defaultdict(int)
         incoming = defaultdict(int)
 
         for event in trace:
-            src = event.get("from")
-            tgt = event.get("to")
+            src = event.source
+            tgt = event.target
 
             outgoing[src] += 1
             incoming[tgt] += 1
@@ -100,9 +117,9 @@ class SemanticExecutionTraceAnalyzerV2:
 
     def _infer_semantics(
         self,
-        classified: List[Dict[str, Any]],
-        patterns: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        classified: List[ClassifiedRuntimeTraceEventV2],
+        patterns: Dict[str, object],
+    ) -> Dict[str, str]:
 
         summary = {
             "intent": "UNKNOWN",
@@ -112,12 +129,10 @@ class SemanticExecutionTraceAnalyzerV2:
 
         total = len(classified)
 
-        control_flow = len(
-            [e for e in classified if e.get("flow_type") == "CONTROL_FLOW"]
-        )
+        control_flow = len([e for e in classified if e.flow_type == "CONTROL_FLOW"])
 
         dependency_flow = len(
-            [e for e in classified if e.get("flow_type") == "DEPENDENCY_FLOW"]
+            [e for e in classified if e.flow_type == "DEPENDENCY_FLOW"]
         )
 
         # -------------------------------------------------

@@ -18,6 +18,20 @@ from pipeline_v2.core.graph.graph_types import GraphNodeV2
 from pipeline_v2.core.state.semantic_inference import (
     SemanticInferenceEngineV2,
 )
+from pipeline_v2.core.identity.resolution_workflow_engine_v2 import (
+    ResolutionWorkflowEngineV2,
+)
+
+from pipeline_v2.core.semantic.semantic_authority import (
+    SemanticAuthority,
+)
+
+from pipeline_v2.core.identity.resolution_workflow_v2 import (
+    ResolutionEventV2,
+)
+from pipeline_v2.core.contract.contract_enforcer import (
+    ContractEnforcer,
+)
 
 
 class RelationshipCoreV2:
@@ -50,11 +64,15 @@ class RelationshipCoreV2:
 
         self.resolver = RelationshipResolverV2()
 
+        self.workflow_engine = ResolutionWorkflowEngineV2()
+
         self.resolution_engine = SymbolResolutionEngineV2(
             symbol_core=symbol_core,
             graph_core=graph_core,
             identity_registry=self.identity_registry,
         )
+
+        self.semantic_authority = SemanticAuthority()
 
         self.semantic_inference = SemanticInferenceEngineV2()
 
@@ -67,6 +85,7 @@ class RelationshipCoreV2:
         chunk,
         symbol_table,
     ):
+        ContractEnforcer.enforce_chunk(chunk)
 
         relationships = []
 
@@ -96,8 +115,19 @@ class RelationshipCoreV2:
                 semantic_context=semantic_context,
             )
 
-            if semantic_result and hasattr(semantic_result, "to_dict"):
-                semantic_result = semantic_result.to_dict()
+            state = None
+
+            if "." in normalized_call["raw"]:
+                owner = normalized_call["raw"].split(".", 1)[0]
+                state = semantic_context.resolve_variable(owner)
+
+            authority_decision = None
+
+            if state:
+                authority_decision = self.semantic_authority.decide(
+                    state=state,
+                    inference=semantic_result,
+                )
 
             resolved = self.resolver.resolve_call(
                 caller_symbol=resolved_source,
@@ -106,17 +136,10 @@ class RelationshipCoreV2:
             )
 
             if semantic_result:
-                resolved.semantic.update(
-                    semantic_result.to_dict()
-                    if hasattr(semantic_result, "to_dict")
-                    else semantic_result.__dict__
-                )
 
-            semantic_data = (
-                resolved.semantic
-                if hasattr(resolved, "semantic")
-                else resolved.get("semantic", {})
-            )
+                resolved.semantic = resolved.semantic.merge_inference(semantic_result)
+
+            semantic_data = resolved.semantic
 
             target = self.resolution_engine.resolve_semantic_target(
                 semantic_data,
@@ -143,14 +166,18 @@ class RelationshipCoreV2:
                     symbol_table,
                 )
 
-            if not target:
-                target = f"external::UNRESOLVED::{normalized_call['raw']}"
-                continue
+            if isinstance(target, ResolutionEventV2):
+                self.workflow_engine.emit(target)
+
+                if target.is_failure():
+                    continue
 
             resolved_target = self.identity.resolve(target)
 
-            if resolved_target is None:
-                resolved_target = f"external::{target}"
+            # if resolved_target is None:
+            #     resolved_target = f"external::{target}"
+            if not resolved_target:
+                continue
 
             # SOURCE identity handling (controlled)
             self._ensure_identity_node(str(resolved_source), IdentityMode.INFERRED)
@@ -167,9 +194,17 @@ class RelationshipCoreV2:
                 layer=resolved.layer,
                 status="RESOLVED",
                 confidence=resolved.confidence,
-                provenance=semantic_data.get("provenance", "UNKNOWN"),
-                framework_hint=semantic_data.get("framework_hint", ""),
-                semantic_owner=semantic_data.get("resolved_owner", ""),
+                provenance=(
+                    authority_decision.provenance
+                    if authority_decision
+                    else semantic_data.provenance if semantic_data else "UNKNOWN"
+                ),
+                framework_hint=semantic_data.framework_hint if semantic_data else "",
+                semantic_owner=(
+                    authority_decision.model
+                    if authority_decision
+                    else semantic_data.resolved_owner if semantic_data else ""
+                ),
                 metadata=self._build_metadata(chunk, resolved),
             )
 
@@ -189,9 +224,7 @@ class RelationshipCoreV2:
             "chunk_id": self._chunk_id(chunk),
             "file": self._chunk_file(chunk),
             "semantic_resolution": bool(inference),
-            "inference": (
-                inference.to_dict() if hasattr(inference, "to_dict") else inference
-            ),
+            "inference": inference.to_dict(),
         }
 
     # =========================================================
@@ -202,15 +235,7 @@ class RelationshipCoreV2:
 
         context = SemanticContextV2()
 
-        metadata = self._chunk_metadata(chunk)
-
-        # compatibilidade dict + contract
-        if isinstance(chunk, dict):
-            assignments = chunk.get("assignments") or metadata.get("assignments") or []
-        else:
-            assignments = (
-                getattr(chunk, "assignments", None) or metadata.get("assignments") or []
-            )
+        assignments = chunk.assignments
 
         for assignment in assignments:
 
@@ -227,54 +252,29 @@ class RelationshipCoreV2:
 
     def _chunk_metadata(self, chunk):
 
-        if isinstance(chunk, dict):
-            return chunk.get("metadata", {})
-
-        return getattr(chunk, "metadata", {})
+        return chunk.metadata
 
     def _chunk_raw_calls(self, chunk):
 
-        if isinstance(chunk, dict):
-
-            metadata = chunk.get("metadata", {})
-
-            return chunk.get("raw_calls") or metadata.get("calls") or []
-
-        return getattr(chunk, "raw_calls", None) or getattr(chunk, "calls", [])
+        return chunk.raw_calls
 
     def _chunk_id(self, chunk):
 
-        if isinstance(chunk, dict):
-
-            metadata = chunk.get("metadata", {})
-
-            return (
-                chunk.get("id")
-                or metadata.get("chunk_id")
-                or metadata.get("symbol_path")
-            )
-
-        return getattr(chunk, "id", None)
+        return chunk.id
 
     def _chunk_file(self, chunk):
 
-        if isinstance(chunk, dict):
-
-            metadata = chunk.get("metadata", {})
-
-            return chunk.get("file") or metadata.get("file")
-
-        return getattr(chunk, "file", None)
+        return chunk.file
 
     def _resolve_from_imports(self, call: str, imports):
         if not imports:
             return None
 
         for imp in imports:
-            local = imp.get("local_name")
-            module = imp.get("module")
+            local = imp["local_name"] if "local_name" in imp else ""
+            module = imp["module"] if "module" in imp else ""
 
-            if call.startswith(local):
+            if local and call.startswith(local):
                 return f"{module}.{call}"
 
         return None

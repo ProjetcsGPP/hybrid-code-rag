@@ -1,6 +1,8 @@
 # pipeline_v2/core/ranking/hybrid_relevance_engine_v2.py
 
-from typing import Dict, Any, Optional  # , List
+from typing import Dict, Optional
+
+from pipeline_v2.core.contract.graph_contracts import RankingContextV2
 
 
 class HybridRelevanceEngineV2:
@@ -26,12 +28,12 @@ class HybridRelevanceEngineV2:
     def score_node(
         self,
         node_id: str,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[RankingContextV2] = None,
     ) -> float:
 
         structural = self._structural_score(node_id)
         semantic = self._semantic_score(node_id)
-        contextual = self._context_score(node_id, context or {})
+        contextual = self._context_score(node_id, context or RankingContextV2())
 
         # -------------------------------------------------
         # WEIGHTED COMBINATION (v1 fixed weights)
@@ -52,9 +54,9 @@ class HybridRelevanceEngineV2:
         if not neighborhood:
             return 0.0
 
-        degree = len(neighborhood["direct_neighbors"])
-        incoming = len(neighborhood["incoming_edges"])
-        outgoing = len(neighborhood["outgoing_edges"])
+        degree = len(neighborhood.nodes)
+        incoming = len([edge for edge in neighborhood.edges if edge.target == node_id])
+        outgoing = len([edge for edge in neighborhood.edges if edge.source == node_id])
 
         # normalized structural importance
         return float(degree * 0.5 + incoming * 0.25 + outgoing * 0.25)
@@ -73,18 +75,23 @@ class HybridRelevanceEngineV2:
         score = 0.0
 
         # edge-based semantic hints
-        for edge in neighborhood["outgoing_edges"]:
+        for edge in neighborhood.edges:
+
+            if edge.source != node_id:
+                continue
 
             # framework hint boost
-            if edge.get("framework_hint"):
+            if "framework_hint" in edge.metadata and edge.metadata["framework_hint"]:
                 score += 1.5
 
             # semantic ownership boost
-            if edge.get("semantic_owner"):
+            if "semantic_owner" in edge.metadata and edge.metadata["semantic_owner"]:
                 score += 1.0
 
             # dispatch type weighting
-            dispatch = edge.get("dispatch")
+            dispatch = (
+                edge.metadata["dispatch"] if "dispatch" in edge.metadata else None
+            )
             if dispatch == "SELF":
                 score += 0.8
             elif dispatch == "FRAMEWORK":
@@ -101,10 +108,10 @@ class HybridRelevanceEngineV2:
     def _context_score(
         self,
         node_id: str,
-        context: Dict[str, Any],
+        context: RankingContextV2,
     ) -> float:
 
-        seed = context.get("seed")
+        seed = context.seed
 
         if not seed:
             return 0.0
@@ -118,11 +125,8 @@ class HybridRelevanceEngineV2:
             return 0.0
 
         # proximity boost
-        if node_id in neighborhood["direct_neighbors"]:
+        if any(node.id == node_id for node in neighborhood.nodes):
             return 2.5
-
-        if node_id in neighborhood["expanded_neighbors"]:
-            return 1.2
 
         return 0.0
 

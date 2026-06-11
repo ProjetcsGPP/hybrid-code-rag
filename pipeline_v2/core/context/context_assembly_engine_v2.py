@@ -1,7 +1,9 @@
 # pipeline_v2/core/context/context_assembly_engine_v2.py
 
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
+
+from pipeline_v2.core.contract.graph_contracts import GraphSubgraphV2
 
 
 class ContextAssemblyEngineV2:
@@ -25,12 +27,12 @@ class ContextAssemblyEngineV2:
 
     def build_context(
         self,
-        subgraph: Dict[str, Any],
+        subgraph: GraphSubgraphV2,
         ranked_nodes: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, object]:
 
-        nodes = subgraph.get("nodes", [])
-        edges = subgraph.get("edges", [])
+        nodes = subgraph.nodes
+        edges = subgraph.edges
 
         # -------------------------------------------------
         # STEP 1: NODE SERIALIZATION
@@ -65,48 +67,35 @@ class ContextAssemblyEngineV2:
     # NODE SERIALIZATION
     # =====================================================
 
-    def _serialize_nodes(self, nodes: List[Any]) -> List[Dict[str, Any]]:
+    def _serialize_nodes(self, nodes):
 
-        result = []
-
-        for n in nodes:
-
-            if isinstance(n, dict):
-                result.append(
-                    {
-                        "id": n.get("id"),
-                        "name": n.get("name"),
-                        "type": n.get("type"),
-                        "canonical": n.get("canonical"),
-                    }
-                )
-            else:
-                result.append({"id": str(n)})
-
-        return result
+        return [
+            {
+                "id": n.id,
+                "name": n.name,
+                "type": n.type,
+                "canonical": n.canonical,
+            }
+            for n in nodes
+        ]
 
     # =====================================================
     # EDGE SERIALIZATION
     # =====================================================
 
-    def _serialize_edges(self, edges: List[Any]) -> List[Dict[str, Any]]:
+    def _serialize_edges(self, edges):
 
-        result = []
-
-        for e in edges:
-
-            result.append(
-                {
-                    "id": e.get("id"),
-                    "source": e.get("source"),
-                    "target": e.get("target"),
-                    "type": e.get("type"),
-                    "layer": e.get("layer"),
-                    "dispatch": e.get("dispatch"),
-                }
-            )
-
-        return result
+        return [
+            {
+                "id": e.id,
+                "source": e.source,
+                "target": e.target,
+                "type": e.type,
+                "layer": e.layer,
+                "dispatch": getattr(e, "dispatch", None),
+            }
+            for e in edges
+        ]
 
     # =====================================================
     # COMPRESSION
@@ -114,8 +103,8 @@ class ContextAssemblyEngineV2:
 
     def _compress_context(
         self,
-        nodes: List[Dict[str, Any]],
-        edges: List[Dict[str, Any]],
+        nodes,
+        edges,
     ) -> str:
 
         lines = []
@@ -124,10 +113,10 @@ class ContextAssemblyEngineV2:
 
         lines.append("\n[NODES]")
         for n in nodes:
-            lines.append(f"- {n.get('name')} ({n.get('type')})")
+            lines.append(f"- {n['name']} ({n['type']})")
 
         lines.append("\n[EDGES]")
         for e in edges:
-            lines.append(f"- {e.get('source')} -> {e.get('target')} ({e.get('type')})")
+            lines.append(f"- {e['source']} -> {e['target']} ({e['type']})")
 
         return "\n".join(lines)

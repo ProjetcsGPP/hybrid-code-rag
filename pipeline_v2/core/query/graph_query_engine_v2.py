@@ -1,6 +1,12 @@
 # pipeline_v2/core/query/graph_query_engine_v2.py
 
-from typing import Dict, List, Any, Set  # , Optional
+from typing import List, Set  # , Optional
+
+from pipeline_v2.core.contract.graph_contracts import (
+    GraphQueryContract,
+    GraphSubgraphV2,
+)
+from pipeline_v2.core.graph.graph_types import GraphEdgeV2
 
 
 class GraphQueryEngineV2:
@@ -23,7 +29,7 @@ class GraphQueryEngineV2:
     # ENTRY POINT
     # =====================================================
 
-    def query(self, query: Dict[str, Any]) -> Dict[str, Any]:
+    def query(self, query: GraphQueryContract) -> GraphSubgraphV2:
         """
         Example query:
 
@@ -37,8 +43,8 @@ class GraphQueryEngineV2:
         }
         """
 
-        start = query.get("start")
-        depth = query.get("depth", 1)
+        start = query.start
+        depth = query.depth
 
         edges = self._traverse(start, depth)
 
@@ -46,16 +52,20 @@ class GraphQueryEngineV2:
 
         nodes = self._extract_nodes(filtered_edges)
 
-        return {
-            "nodes": nodes,
-            "edges": filtered_edges,
-        }
+        return GraphSubgraphV2(
+            nodes=[
+                self.graph.store.nodes[node_id]
+                for node_id in nodes
+                if node_id in self.graph.store.nodes
+            ],
+            edges=filtered_edges,
+        )
 
     # =====================================================
     # TRAVERSAL ENGINE
     # =====================================================
 
-    def _traverse(self, start: str, depth: int) -> List[Dict[str, Any]]:
+    def _traverse(self, start: str, depth: int) -> List[GraphEdgeV2]:
 
         visited: Set[str] = set()
         frontier = [start]
@@ -73,7 +83,11 @@ class GraphQueryEngineV2:
 
                 visited.add(node_id)
 
-                edges = self.graph.edges_by_source.get(node_id, [])
+                edges = (
+                    self.graph.edges_by_source[node_id]
+                    if node_id in self.graph.edges_by_source
+                    else []
+                )
 
                 for e in edges:
                     collected_edges.append(e)
@@ -89,29 +103,32 @@ class GraphQueryEngineV2:
 
     def _apply_filters(
         self,
-        edges: List[Dict[str, Any]],
-        query: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        edges: List[GraphEdgeV2],
+        query: GraphQueryContract,
+    ) -> List[GraphEdgeV2]:
 
-        edge_type = query.get("edge_type")
-        layer = query.get("layer")
-        status = query.get("status")
-        framework_hint = query.get("framework_hint")
+        edge_type = query.edge_type
+        layer = query.layer
+        status = query.status
+        framework_hint = query.framework_hint
 
         result = []
 
         for e in edges:
 
-            if edge_type and e.get("type") != edge_type:
+            if edge_type and e.type != edge_type:
                 continue
 
-            if layer and e.get("layer") != layer:
+            if layer and e.layer != layer:
                 continue
 
-            if status and e.get("status") != status:
+            if status and e.status != status:
                 continue
 
-            if framework_hint and e.get("framework_hint") != framework_hint:
+            edge_framework_hint = (
+                e.metadata["framework_hint"] if "framework_hint" in e.metadata else None
+            )
+            if framework_hint and edge_framework_hint != framework_hint:
                 continue
 
             result.append(e)
@@ -122,13 +139,13 @@ class GraphQueryEngineV2:
     # NODE EXTRACTION
     # =====================================================
 
-    def _extract_nodes(self, edges: List[Dict[str, Any]]) -> List[str]:
+    def _extract_nodes(self, edges: List[GraphEdgeV2]) -> List[str]:
 
         nodes = set()
 
         for e in edges:
-            nodes.add(e.get("source"))
-            nodes.add(e.get("target"))
+            nodes.add(e.source)
+            nodes.add(e.target)
 
         return list(nodes)
 
@@ -136,14 +153,14 @@ class GraphQueryEngineV2:
     # HIGH LEVEL QUERIES
     # =====================================================
 
-    def neighbors(self, node_id: str, depth: int = 1) -> Dict[str, Any]:
+    def neighbors(self, node_id: str, depth: int = 1) -> GraphSubgraphV2:
 
-        return self.query({"start": node_id, "depth": depth})
+        return self.query(GraphQueryContract(start=node_id, depth=depth))
 
-    def calls(self, node_id: str) -> Dict[str, Any]:
+    def calls(self, node_id: str) -> GraphSubgraphV2:
 
-        return self.query({"start": node_id, "depth": 1, "edge_type": "CALLS"})
+        return self.query(GraphQueryContract(start=node_id, depth=1, edge_type="CALLS"))
 
-    def semantic_subgraph(self, node_id: str) -> Dict[str, Any]:
+    def semantic_subgraph(self, node_id: str) -> GraphSubgraphV2:
 
-        return self.query({"start": node_id, "depth": 2, "layer": "SEMANTIC"})
+        return self.query(GraphQueryContract(start=node_id, depth=2, layer="SEMANTIC"))

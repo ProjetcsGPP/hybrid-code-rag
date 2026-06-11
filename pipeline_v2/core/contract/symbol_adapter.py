@@ -19,19 +19,22 @@ class SymbolAdapter:
             "type",
         ]
 
-        missing = [x for x in required if not meta.get(x)]
+        missing = [x for x in required if x not in meta or not meta[x]]
 
         if missing:
             raise ValueError(f"Invalid AST Symbol. Missing fields: {missing}")
 
         return SymbolContract(
-            id=meta.get("symbol_path") or meta.get("chunk_id"),
-            name=meta.get("name"),
-            type=meta.get("type"),
-            file_path=meta.get("file"),
-            canonical=meta.get("symbol_path")
-            or f"{meta.get('file')}.{meta.get('name')}",
-            parent=meta.get("parent_class"),
+            id=meta["symbol_path"] if "symbol_path" in meta else meta["chunk_id"],
+            name=meta["name"],
+            type=meta["type"],
+            file_path=meta["file"] if "file" in meta else None,
+            canonical=(
+                meta["symbol_path"]
+                if "symbol_path" in meta
+                else f"{meta['file']}.{meta['name']}"
+            ),
+            parent=meta["parent_class"] if "parent_class" in meta else None,
             metadata={
                 k: v for k, v in meta.items() if k not in ["name", "type", "file"]
             },

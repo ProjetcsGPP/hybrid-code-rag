@@ -12,16 +12,20 @@ class SemanticAdapter:
     # CHUNK
     # -------------------------
     @staticmethod
-    def normalize_chunk(chunk: dict) -> ChunkContract:
-        meta = chunk.get("metadata", {})
+    def normalize_chunk(chunk) -> ChunkContract:
+
+        if isinstance(chunk, ChunkContract):
+            return ContractEnforcer.enforce_chunk(chunk)
+
+        meta = chunk["metadata"]
 
         chunk_contract = ChunkContract(
-            id=meta.get("chunk_id"),
-            file=meta.get("file"),
-            name=meta.get("name"),
-            type=meta.get("type"),
-            raw_calls=meta.get("calls", []),
-            assignments=meta.get("assignments", []),
+            id=meta["chunk_id"],
+            file=meta["file"],
+            name=meta["name"],
+            type=meta["type"],
+            raw_calls=meta["calls"] if "calls" in meta else [],
+            assignments=meta["assignments"] if "assignments" in meta else [],
             metadata=meta,
         )
 

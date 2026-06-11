@@ -25,7 +25,7 @@ class GraphStoreV2:
 
     def get_node(self, node_id: str):
 
-        return self.nodes.get(node_id)
+        return self.nodes[node_id] if node_id in self.nodes else None
 
     def get_nodes(self):
 
@@ -41,7 +41,7 @@ class GraphStoreV2:
 
     def get_edge(self, edge_id: str):
 
-        return self.edges.get(edge_id)
+        return self.edges[edge_id] if edge_id in self.edges else None
 
     def get_edges(self):
 

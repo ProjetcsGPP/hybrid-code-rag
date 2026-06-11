@@ -42,10 +42,12 @@ class ScopedRuntimeGraphV2:
         node_id: str,
     ):
 
-        return self.context_nodes.get(
-            context_id,
-            {},
-        ).get(node_id)
+        nodes = (
+            self.context_nodes[context_id]
+            if context_id in self.context_nodes
+            else {}
+        )
+        return nodes[node_id] if node_id in nodes else None
 
     def get_nodes(
         self,
@@ -53,9 +55,10 @@ class ScopedRuntimeGraphV2:
     ):
 
         return list(
-            self.context_nodes.get(
-                context_id,
-                {},
+            (
+                self.context_nodes[context_id]
+                if context_id in self.context_nodes
+                else {}
             ).values()
         )
 
@@ -77,10 +80,12 @@ class ScopedRuntimeGraphV2:
         edge_id: str,
     ):
 
-        return self.context_edges.get(
-            context_id,
-            {},
-        ).get(edge_id)
+        edges = (
+            self.context_edges[context_id]
+            if context_id in self.context_edges
+            else {}
+        )
+        return edges[edge_id] if edge_id in edges else None
 
     def get_edges(
         self,
@@ -88,9 +93,10 @@ class ScopedRuntimeGraphV2:
     ):
 
         return list(
-            self.context_edges.get(
-                context_id,
-                {},
+            (
+                self.context_edges[context_id]
+                if context_id in self.context_edges
+                else {}
             ).values()
         )
 
@@ -120,15 +126,13 @@ class ScopedRuntimeGraphV2:
 
         return {
             "nodes": len(
-                self.context_nodes.get(
-                    context_id,
-                    {},
-                )
+                self.context_nodes[context_id]
+                if context_id in self.context_nodes
+                else {}
             ),
             "edges": len(
-                self.context_edges.get(
-                    context_id,
-                    {},
-                )
+                self.context_edges[context_id]
+                if context_id in self.context_edges
+                else {}
             ),
         }

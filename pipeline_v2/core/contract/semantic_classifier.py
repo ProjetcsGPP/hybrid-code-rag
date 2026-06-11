@@ -1,5 +1,9 @@
 # pipeline_v2/core/contract/semantic_classifier.py
 
+from pipeline_v2.core.relationship.relationship_types import (
+    RelationshipType,
+)
+
 
 class SemanticCallClassifier:
 
@@ -29,15 +33,15 @@ class SemanticCallClassifier:
         """
 
         if call.startswith("self."):
-            return "SELF_CALL", "SELF"
+            return RelationshipType.SELF_CALL, "SELF"
 
         if call.startswith("super."):
-            return "SUPER_CALL", "SUPER"
+            return RelationshipType.SUPER_CALL, "SUPER"
 
         if "objects." in call:
-            return "ORM_QUERY", "ORM"
+            return RelationshipType.ORM_QUERY, "ORM"
 
         if "." in call:
-            return "FRAMEWORK_CALL", "FRAMEWORK"
+            return RelationshipType.FRAMEWORK_CALL, "FRAMEWORK"
 
-        return "CALLS", "DIRECT"
+        return RelationshipType.CALLS, "DIRECT"

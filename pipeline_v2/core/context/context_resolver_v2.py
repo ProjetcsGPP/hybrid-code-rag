@@ -53,7 +53,8 @@ class ContextResolverV2:
 
     def _detect_language(self, chunks) -> str:
         for c in chunks:
-            path = c.get("metadata", {}).get("file", "")
+            metadata = c["metadata"] if "metadata" in c else {}
+            path = metadata["file"] if "file" in metadata else ""
             if path.endswith(".py"):
                 return "python"
         return "unknown"
@@ -70,16 +71,22 @@ class ContextResolverV2:
         score = {}
 
         for c in chunks:
-            code = c.get("code", "")
+            code = c["code"] if "code" in c else ""
 
             if "models.Model" in code:
-                score["django"] = score.get("django", 0) + 0.4
+                score["django"] = (
+                    score["django"] if "django" in score else 0
+                ) + 0.4
 
             if "BaseModel" in code:
-                score["pydantic"] = score.get("pydantic", 0) + 0.4
+                score["pydantic"] = (
+                    score["pydantic"] if "pydantic" in score else 0
+                ) + 0.4
 
             if "FastAPI" in code:
-                score["fastapi"] = score.get("fastapi", 0) + 0.3
+                score["fastapi"] = (
+                    score["fastapi"] if "fastapi" in score else 0
+                ) + 0.3
 
         if not score:
             return None, 0.0
@@ -117,7 +124,7 @@ class ContextResolverV2:
     # =========================================================
 
     def _detect_orm(self, chunks) -> bool:
-        return any("objects." in c.get("code", "") for c in chunks)
+        return any("objects." in (c["code"] if "code" in c else "") for c in chunks)
 
     def _detect_models(self, symbols) -> bool:
         if not symbols:
@@ -125,4 +132,4 @@ class ContextResolverV2:
         return any("Model" in getattr(s, "name", "") for s in symbols)
 
     def _detect_import_patterns(self, chunks) -> bool:
-        return any("import" in c.get("code", "") for c in chunks)
+        return any("import" in (c["code"] if "code" in c else "") for c in chunks)

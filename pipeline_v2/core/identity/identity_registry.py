@@ -1,5 +1,10 @@
 # pipeline_v2/core/identity/identity_registry.py
 
+from pipeline_v2.core.identity.resolution_workflow_v2 import (
+    ResolutionEventV2,
+    ResolutionEventTypeV2,
+)
+
 
 class IdentityRegistryV2:
     """
@@ -34,7 +39,8 @@ class IdentityRegistryV2:
         # NAME INDEX (MULTI)
         # -------------------------
         if name:
-            self.by_name.setdefault(name, [])
+            if name not in self.by_name:
+                self.by_name[name] = []
             self.by_name[name].append(obj)
 
         # -------------------------
@@ -75,34 +81,38 @@ class IdentityRegistryV2:
             return ref
 
         # 2. name resolution (best match)
-        matches = self.by_name.get(ref, [])
+        matches = self.by_name[ref] if ref in self.by_name else []
         if matches:
             return matches[0].id
 
         # 3. canonical resolution
-        obj = self.by_canonical.get(ref)
+        obj = self.by_canonical[ref] if ref in self.by_canonical else None
         if obj:
             return obj.id
 
-        # 4. fallback external reference
-        return f"external::{ref}"
+        # 4. fallback externo (registro de identidade leve, sem garantia de unicidade)
+        return ResolutionEventV2(
+            event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
+            source=ref,
+            target=None,
+        )
 
     # =====================================================
     # LOOKUPS
     # =====================================================
 
     def resolve_id(self, obj_id: str):
-        return self.by_id.get(obj_id)
+        return self.by_id[obj_id] if obj_id in self.by_id else None
 
     def resolve_by_name(self, name: str):
-        return self.by_name.get(name, [])
+        return self.by_name[name] if name in self.by_name else []
 
     def resolve_best_by_name(self, name: str):
-        matches = self.by_name.get(name, [])
+        matches = self.by_name[name] if name in self.by_name else []
         return matches[0] if matches else None
 
     def resolve_by_canonical(self, canonical: str):
-        obj = self.by_canonical.get(canonical)
+        obj = self.by_canonical[canonical] if canonical in self.by_canonical else None
         return obj.id if obj else None
 
     def get_all(self):

@@ -1,7 +1,13 @@
 # pipeline_v2/core/reasoning/graph_reasoning_engine_v2.py
 
-from typing import Dict, List, Any, Set
+from typing import Dict, List, Set
 from collections import defaultdict
+
+from pipeline_v2.core.contract.graph_contracts import (
+    GraphAnalysisInputV2,
+    ReasoningResultV2,
+)
+from pipeline_v2.core.graph.graph_types import GraphEdgeV2, GraphNodeV2
 
 
 class GraphReasoningEngineV2:
@@ -24,10 +30,10 @@ class GraphReasoningEngineV2:
     # ENTRY POINT
     # =====================================================
 
-    def reason(self, analysis_input: Dict[str, Any]) -> Dict[str, Any]:
+    def reason(self, analysis_input: GraphAnalysisInputV2) -> ReasoningResultV2:
 
-        nodes = analysis_input.get("nodes", [])
-        edges = analysis_input.get("edges", [])
+        nodes = analysis_input.nodes
+        edges = analysis_input.edges
 
         impact = self._impact_analysis(edges)
         critical = self._critical_nodes(edges)
@@ -36,25 +42,25 @@ class GraphReasoningEngineV2:
 
         intent = self._infer_system_intent(impact, risk, paths)
 
-        return {
-            "impact_analysis": impact,
-            "critical_nodes": critical,
-            "reasoned_paths": paths,
-            "risk_scores": risk,
-            "inferred_intent": intent,
-        }
+        return ReasoningResultV2(
+            impact_analysis=impact,
+            risk_scores=risk,
+            critical_nodes=frozenset(critical),
+            reasoned_paths=paths,
+            inferred_intent=intent,
+        )
 
     # =====================================================
     # 1. IMPACT ANALYSIS
     # =====================================================
 
-    def _impact_analysis(self, edges: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    def _impact_analysis(self, edges: List[GraphEdgeV2]) -> Dict[str, List[str]]:
 
         impact_map = defaultdict(list)
 
         for e in edges:
-            src = e.get("source")
-            tgt = e.get("target")
+            src = e.source
+            tgt = e.target
 
             impact_map[src].append(tgt)
 
@@ -64,12 +70,12 @@ class GraphReasoningEngineV2:
     # 2. CRITICAL NODES
     # =====================================================
 
-    def _critical_nodes(self, edges: List[Dict[str, Any]]) -> Set[str]:
+    def _critical_nodes(self, edges: List[GraphEdgeV2]) -> Set[str]:
 
         dependency_count = defaultdict(int)
 
         for e in edges:
-            dependency_count[e.get("target")] += 1
+            dependency_count[e.target] += 1
 
         return {node for node, count in dependency_count.items() if count > 2}
 
@@ -77,12 +83,12 @@ class GraphReasoningEngineV2:
     # 3. PATH REASONING
     # =====================================================
 
-    def _reason_paths(self, edges: List[Dict[str, Any]]) -> List[List[str]]:
+    def _reason_paths(self, edges: List[GraphEdgeV2]) -> List[List[str]]:
 
         graph = defaultdict(list)
 
         for e in edges:
-            graph[e.get("source")].append(e.get("target"))
+            graph[e.source].append(e.target)
 
         paths = []
 
@@ -98,16 +104,16 @@ class GraphReasoningEngineV2:
 
     def _risk_scoring(
         self,
-        nodes: List[Dict[str, Any]],
-        edges: List[Dict[str, Any]],
+        nodes: List[GraphNodeV2],
+        edges: List[GraphEdgeV2],
     ) -> Dict[str, float]:
 
         risk = defaultdict(float)
 
         # node risk based on connectivity
         for e in edges:
-            risk[e.get("source")] += 0.1
-            risk[e.get("target")] += 0.2
+            risk[e.source] += 0.1
+            risk[e.target] += 0.2
 
         # normalize
         return {k: min(v, 1.0) for k, v in risk.items()}

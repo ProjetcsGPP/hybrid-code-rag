@@ -1,7 +1,9 @@
 # pipeline_v2/core/embeddings/embedding_engine_v2.py
 
-from typing import Dict, List, Any  # , Optional
+from typing import Dict, List  # , Optional
 import hashlib
+
+from pipeline_v2.core.graph.graph_types import GraphEdgeV2, GraphNodeV2
 
 
 class EmbeddingEngineV2:
@@ -25,17 +27,17 @@ class EmbeddingEngineV2:
     # NODE EMBEDDING
     # =====================================================
 
-    def embed_node(self, node: Dict[str, Any]) -> List[float]:
+    def embed_node(self, node: GraphNodeV2) -> List[float]:
 
-        key = node.get("id")
+        key = node.id
 
         if key in self.node_embeddings:
             return self.node_embeddings[key]
 
         vector = self._fake_embedding(
-            node.get("name", ""),
-            node.get("type", ""),
-            node.get("canonical", ""),
+            node.name,
+            node.type,
+            node.canonical,
         )
 
         self.node_embeddings[key] = vector
@@ -45,17 +47,21 @@ class EmbeddingEngineV2:
     # EDGE EMBEDDING
     # =====================================================
 
-    def embed_edge(self, edge: Dict[str, Any]) -> List[float]:
+    def embed_edge(self, edge: GraphEdgeV2) -> List[float]:
 
-        key = edge.get("id")
+        key = edge.id
 
         if key in self.edge_embeddings:
             return self.edge_embeddings[key]
 
         vector = self._fake_embedding(
-            edge.get("type", ""),
-            edge.get("dispatch", ""),
-            edge.get("framework_hint", ""),
+            edge.type,
+            edge.metadata["dispatch"] if "dispatch" in edge.metadata else "",
+            (
+                edge.metadata["framework_hint"]
+                if "framework_hint" in edge.metadata
+                else ""
+            ),
         )
 
         self.edge_embeddings[key] = vector
@@ -65,7 +71,7 @@ class EmbeddingEngineV2:
     # GRAPH EMBEDDING (AGGREGATE)
     # =====================================================
 
-    def embed_subgraph(self, nodes: List[Dict[str, Any]]) -> List[float]:
+    def embed_subgraph(self, nodes: List[GraphNodeV2]) -> List[float]:
 
         if not nodes:
             return []

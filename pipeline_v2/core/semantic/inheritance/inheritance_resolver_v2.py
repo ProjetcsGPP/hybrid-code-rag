@@ -1,6 +1,8 @@
 # pipeline_v2/core/semantic/inheritance/inheritance_resolver_v2.py
 
-from typing import List, Dict
+from typing import List
+
+from pipeline_v2.core.contract.graph_contracts import InheritanceEdgeV2
 
 
 class InheritanceResolverV2:
@@ -20,7 +22,9 @@ class InheritanceResolverV2:
     # ENTRY POINT
     # ----------------------------
 
-    def resolve(self, inheritance_edges: List[Dict]) -> List[Dict]:
+    def resolve(
+        self, inheritance_edges: List[InheritanceEdgeV2]
+    ) -> List[InheritanceEdgeV2]:
 
         resolved = []
 
@@ -33,15 +37,16 @@ class InheritanceResolverV2:
     # CORE LOGIC
     # ----------------------------
 
-    def _resolve_edge(self, edge: Dict) -> Dict:
+    def _resolve_edge(self, edge: InheritanceEdgeV2) -> InheritanceEdgeV2:
 
-        base_name = edge.get("base_symbol_name")
+        base_name = edge.base_symbol_name
 
         resolved_id = self._resolve_base_symbol(base_name)
 
-        edge["resolved_base_symbol_id"] = resolved_id
-
-        return edge
+        return InheritanceEdgeV2(
+            base_symbol_name=edge.base_symbol_name,
+            resolved_base_symbol_id=resolved_id,
+        )
 
     # ----------------------------
     # RESOLUTION STRATEGY

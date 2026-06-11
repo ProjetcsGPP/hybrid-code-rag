@@ -53,8 +53,8 @@ class SemanticState:
     # -------------------------
     # GET VARIABLE STATE
     # -------------------------
-    def get(self, name: str) -> Optional[VariableState]:
-        return self.variables.get(name)
+    def resolve_variable(self, name: str) -> Optional[VariableState]:
+        return self.variables[name] if name in self.variables else None
 
     # -------------------------
     # DEBUG HELPERS
