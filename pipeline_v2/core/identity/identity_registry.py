@@ -65,36 +65,35 @@ class IdentityRegistryV2:
     # =====================================================
 
     def resolve(self, ref: str):
-        """
-        Unified identity resolution strategy:
-        1. direct ID
-        2. name match
-        3. canonical match
-        4. external fallback
-        """
 
         if ref is None:
-            return f"pending::{ref}"
+            return ResolutionEventV2(
+                event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
+                source="None",
+                target=None,
+                context={"reason": "null_ref"},
+            )
 
         # 1. direct ID
         if ref in self.by_id:
             return ref
 
-        # 2. name resolution (best match)
-        matches = self.by_name[ref] if ref in self.by_name else []
+        # 2. name resolution
+        matches = self.by_name.get(ref, [])
         if matches:
             return matches[0].id
 
-        # 3. canonical resolution
-        obj = self.by_canonical[ref] if ref in self.by_canonical else None
+        # 3. canonical
+        obj = self.by_canonical.get(ref)
         if obj:
             return obj.id
 
-        # 4. fallback externo (registro de identidade leve, sem garantia de unicidade)
+        # 4. failure (canonical contract)
         return ResolutionEventV2(
             event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
             source=ref,
             target=None,
+            context=None,
         )
 
     # =====================================================

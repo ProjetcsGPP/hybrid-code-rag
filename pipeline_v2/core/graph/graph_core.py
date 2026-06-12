@@ -41,52 +41,12 @@ class GraphCoreV2:
         self._node_ids: Set[str] = set()
         self._edge_ids: Set[str] = set()
 
-        self._external_node_ids: Set[str] = set()
-
     def set_mutation_auditor(self, auditor):
         self.mutation_auditor = auditor
 
-    def _ensure_node_exists(self, node_id: str):
+    def _get_existing_node(self, node_id: str):
 
-        # HARD BOUNDARY RULE: no dirty nodes in graph core
-        if node_id.startswith("UNRESOLVED::"):
-            return None
-
-        # external nodes são aceitos, mas só via lazy materialization
-
-        existing = self.store.get_node(node_id)
-
-        if existing:
-            return existing
-
-        # -------------------------------------------------
-        # LAZY EXTERNAL MATERIALIZATION
-        # -------------------------------------------------
-
-        if node_id.startswith("external::"):
-
-            if node_id in self._external_node_ids:
-                return self.store.get_node(node_id)
-
-            external_node = GraphNodeV2(
-                id=node_id,
-                type="external",
-                name=node_id.split("::")[-1],
-                canonical=node_id,
-                metadata={
-                    "mode": "EXTERNAL",
-                    "semantic_only": True,
-                    "lazy_materialized": True,
-                },
-            )
-
-            self._external_node_ids.add(node_id)
-
-            self.add_node(external_node)
-
-            return external_node
-
-        return None
+        return self.store.get_node(node_id)
 
     # =====================================================
     # NODE ENFORCEMENT
@@ -124,9 +84,6 @@ class GraphCoreV2:
             raise ValueError("Node ID cannot be empty")
 
         self._node_ids.add(node.id)
-
-        if node.metadata.get("mode") == "EXTERNAL":
-            self._external_node_ids.add(node.id)
 
         self.store.add_node(node)
 
@@ -185,33 +142,24 @@ class GraphCoreV2:
         if not edge.source or not edge.target:
             raise ValueError(f"Invalid edge endpoints: {edge}")
 
-        source_node = self._ensure_node_exists(edge.source)
-        target_node = self._ensure_node_exists(edge.target)
-
-        print(
-            "EDGE REJECTED",
-            edge.id,
-            edge.source,
-            source_node,
-            edge.target,
-            target_node,
-        )
+        source_node = self._get_existing_node(edge.source)
+        target_node = self._get_existing_node(edge.target)
 
         if not source_node or not target_node:
             return
 
         # -------------------------------------------------
-        # 3. REGISTER ID (CRITICAL)
-        # -------------------------------------------------
-
-        self._edge_ids.add(edge.id)
-
-        # -------------------------------------------------
-        # 4. VALIDATION: UNRESOLVED TARGETS (BÁSICA)
+        # 3. VALIDATION: UNRESOLVED TARGETS (BÁSICA)
         # -------------------------------------------------
 
         if not self.validate_edge(edge):
             return
+
+        # -------------------------------------------------
+        # 4. REGISTER ID (CRITICAL)
+        # -------------------------------------------------
+
+        self._edge_ids.add(edge.id)
 
         # -------------------------------------------------
         # 5. PERSISTENCE
@@ -234,14 +182,10 @@ class GraphCoreV2:
     def trace(self, node_id: str):
         return {
             "from": (
-                self.edges_by_source[node_id]
-                if node_id in self.edges_by_source
-                else []
+                self.edges_by_source[node_id] if node_id in self.edges_by_source else []
             ),
             "to": (
-                self.edges_by_target[node_id]
-                if node_id in self.edges_by_target
-                else []
+                self.edges_by_target[node_id] if node_id in self.edges_by_target else []
             ),
         }
 
@@ -255,11 +199,7 @@ class GraphCoreV2:
         layer: Optional[str] = None,
         status: Optional[str] = None,
     ):
-        edges = (
-            self.edges_by_source[node_id]
-            if node_id in self.edges_by_source
-            else []
-        )
+        edges = self.edges_by_source[node_id] if node_id in self.edges_by_source else []
 
         if layer:
             edges = [e for e in edges if getattr(e, "layer", None) == layer]
@@ -294,9 +234,7 @@ class GraphCoreV2:
                     nodes[node.id] = node
 
                 for e in (
-                    self.edges_by_source[nid]
-                    if nid in self.edges_by_source
-                    else []
+                    self.edges_by_source[nid] if nid in self.edges_by_source else []
                 ):
                     edges.append(e)
                     next_frontier.append(e.target)
@@ -320,11 +258,7 @@ class GraphCoreV2:
         return list(self.store.edges.values())
 
     def get_edges_by_type(self, edge_type: str):
-        return (
-            self.edges_by_type[edge_type]
-            if edge_type in self.edges_by_type
-            else []
-        )
+        return self.edges_by_type[edge_type] if edge_type in self.edges_by_type else []
 
     # =====================================================
     # FULL TRACE
@@ -348,15 +282,10 @@ class GraphCoreV2:
     # =====================================================
     def validate_edge(self, edge):
 
-        if edge.source.startswith("UNRESOLVED::"):
+        if not isinstance(edge.source, str):
             return False
 
-        if edge.target.startswith("UNRESOLVED::"):
-            return False
-
-        # external NÃO é inválido (incremental graph assumption)
-        # mas evita auto-loop lixo
-        if edge.source == edge.target and edge.source.startswith("external::"):
+        if not isinstance(edge.target, str):
             return False
 
         return True
@@ -375,5 +304,3 @@ class GraphCoreV2:
 
         self._node_ids.clear()
         self._edge_ids.clear()
-
-        self._external_node_ids.clear()

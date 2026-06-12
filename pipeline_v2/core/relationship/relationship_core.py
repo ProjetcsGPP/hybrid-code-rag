@@ -9,9 +9,7 @@ from pipeline_v2.core.state.assignment_resolver import AssignmentResolverV2
 from pipeline_v2.core.resolution.symbol_resolution_engine_v2 import (
     SymbolResolutionEngineV2,
 )
-from pipeline_v2.core.identity.identity_service_v2 import (
-    IdentityServiceV2,
-)
+
 from pipeline_v2.core.identity.identity_mode import IdentityMode
 from pipeline_v2.core.graph.graph_types import GraphNodeV2
 
@@ -60,8 +58,6 @@ class RelationshipCoreV2:
 
         self.identity_registry = identity_registry
 
-        self.identity = IdentityServiceV2(self.identity_registry)
-
         self.resolver = RelationshipResolverV2()
 
         self.workflow_engine = ResolutionWorkflowEngineV2()
@@ -102,7 +98,11 @@ class RelationshipCoreV2:
             return relationships
 
         # 🔴 IMPORTANTE: não mutar source global
-        resolved_source = self.identity.resolve(source)
+        resolved_source = self.identity_registry.resolve(source)
+
+        if isinstance(resolved_source, ResolutionEventV2):
+            self.workflow_engine.emit(resolved_source)
+            return []
 
         for raw_call in self._chunk_raw_calls(chunk):
 
@@ -159,20 +159,15 @@ class RelationshipCoreV2:
                     imports_hint,
                 )
 
-            # fallback original
-            if not target:
-                target = self.resolution_engine.resolve_target(
-                    normalized_call["raw"],
-                    symbol_table,
-                )
-
             if isinstance(target, ResolutionEventV2):
                 self.workflow_engine.emit(target)
+                continue
 
-                if target.is_failure():
-                    continue
+            resolved_target = target
 
-            resolved_target = self.identity.resolve(target)
+            if isinstance(resolved_target, ResolutionEventV2):
+                self.workflow_engine.emit(resolved_target)
+                continue
 
             # if resolved_target is None:
             #     resolved_target = f"external::{target}"
@@ -183,7 +178,7 @@ class RelationshipCoreV2:
             self._ensure_identity_node(str(resolved_source), IdentityMode.INFERRED)
 
             # TARGET identity handling (controlled)
-            self._ensure_identity_node(str(resolved_target), IdentityMode.EXTERNAL)
+            self._ensure_identity_node(str(resolved_target), IdentityMode.INFERRED)
 
             rel = RelationshipFactoryV2.create(
                 source=str(resolved_source),
@@ -284,12 +279,6 @@ class RelationshipCoreV2:
     # =========================================================
 
     def _ensure_identity_node(self, node_id: str, mode: IdentityMode):
-        """
-        Controlled identity creation:
-        - STRICT: do nothing (must already exist)
-        - INFERRED: register lightweight semantic node
-        - EXTERNAL: register external placeholder
-        """
 
         if self.identity_registry.exists(node_id):
             return

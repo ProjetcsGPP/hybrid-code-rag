@@ -4,6 +4,11 @@ from typing import List
 
 from pipeline_v2.core.contract.graph_contracts import InheritanceEdgeV2
 
+from pipeline_v2.core.identity.resolution_workflow_v2 import (
+    ResolutionEventV2,
+    ResolutionEventTypeV2,
+)
+
 
 class InheritanceResolverV2:
     """
@@ -88,4 +93,9 @@ class InheritanceResolverV2:
         Se não resolver, trata como external dependency.
         """
 
-        return f"external::{name}"
+        return ResolutionEventV2(
+            event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
+            source=name,
+            target=None,
+            context={"reason": "inheritance_not_found"},
+        )

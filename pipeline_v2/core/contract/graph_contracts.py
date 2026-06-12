@@ -112,5 +112,6 @@ class AssignmentContractV2:
 
 @dataclass(frozen=True)
 class InheritanceEdgeV2:
+
     base_symbol_name: str
     resolved_base_symbol_id: Optional[str] = None

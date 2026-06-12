@@ -6,7 +6,7 @@ from ..graph.graph_types import GraphNodeV2, GraphEdgeV2
 from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 from pipeline_v2.core.contract.graph_contracts import GraphSubgraphV2
 
-from pipeline_v2.core.identity.identity_service_v2 import IdentityServiceV2
+# from pipeline_v2.core.identity.identity_service_v2 import IdentityServiceV2
 from pipeline_v2.core.symbol.symbol_models import SymbolV2
 from pipeline_v2.core.relationship.relationship_models import (
     RelationshipV2,
@@ -23,7 +23,7 @@ class GraphBuilderV2:
         self.node_index = {}
         self.graph_core = graph_core
         self.identity_registry = identity_registry
-        self.identity = IdentityServiceV2(identity_registry)
+        # self.identity = IdentityServiceV2(identity_registry)
 
     # -------------------------
     # SYMBOL INGESTION
@@ -62,11 +62,16 @@ class GraphBuilderV2:
         rel = ContractEnforcer.enforce_relationship(rel)
 
         # 🔥 resolve via convergence layer + registry
-        source = self.identity.resolve(rel.source)
-        target = self.identity.resolve(rel.target)
+        # source = self.identity_registry.resolve(rel.source)
+        # target = self.identity_registry.resolve(rel.target)
+        source = rel.source
+        target = rel.target
 
         if source is None or target is None:
             return None
+
+        ContractEnforcer.enforce_identity(source)
+        ContractEnforcer.enforce_identity(target)
 
         edge = GraphEdgeV2(
             id=rel.id,
@@ -132,30 +137,13 @@ class GraphBuilderV2:
     # -------------------------
     def _build_graph(self, semantic_payload):
 
-        edges = semantic_payload["edges"]
-
-        ContractEnforcer.enforce_list(
-            edges,
-            GraphEdgeV2,
-        )
-
+        # agora apenas organiza/estrutura o que já foi produzido
         return GraphSubgraphV2(
-            edges=edges,
+            edges=semantic_payload.get("edges", []),
             nodes=[],
         )
 
     def build(self, semantic_payload):
         graph = self._build_graph(semantic_payload)
 
-        self._persist(graph)  # ÚNICO ponto de escrita
-
         return graph
-
-    # -------------------------
-    # PERSISTENCE
-    # -------------------------
-
-    def _persist(self, graph):
-
-        for edge in graph.edges:
-            self.graph_core.add_edge(edge)

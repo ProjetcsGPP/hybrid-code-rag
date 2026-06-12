@@ -1,7 +1,5 @@
 # pipeline_v2/core/contract/semantic_decision_result.py
 
-# pipeline_v2/core/contract/semantic_decision_result.py
-
 from dataclasses import dataclass
 
 

@@ -2,6 +2,10 @@
 
 
 from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
+from pipeline_v2.core.identity.resolution_workflow_v2 import (
+    ResolutionEventV2,
+    ResolutionEventTypeV2,
+)
 
 
 def build_sample_registry():
@@ -58,4 +62,7 @@ def test_resolve_external():
     result = registry.resolve("unknown_symbol")
     print("EXTERNAL:", result)
 
-    assert result == "external::unknown_symbol"
+    assert isinstance(result, ResolutionEventV2)
+    assert result.event_type == ResolutionEventTypeV2.FAILED_RESOLUTION
+    assert result.source == "unknown_symbol"
+    assert result.target is None

@@ -2,46 +2,35 @@
 
 
 class GraphBoundaryEnforcerV2:
-    """
-    ÚNICO ponto de controle de entrada do GraphCore.
-
-    Responsável por:
-    - bloquear dirty nodes/edges
-    - normalizar external::
-    - impedir unresolved leak
-    """
 
     def allow_node(self, node_id: str, node=None):
 
         if not node_id:
             return False
 
-        if node_id.startswith("UNRESOLVED::"):
-            return False
-
-        return True
+        return isinstance(node_id, str)
 
     def allow_edge(self, edge):
 
         if not edge:
             return False
 
-        source = str(edge.source)
-        target = str(edge.target)
+        source = edge.source
+        target = edge.target
 
-        # bloqueio hard
-        if source.startswith("UNRESOLVED::") or target.startswith("UNRESOLVED::"):
+        if source is None or target is None:
             return False
 
-        # external NÃO entra como edge endpoint
-        if source.startswith("external::") or target.startswith("external::"):
-            return False
+        # ResolutionEvent nunca atravessa a fronteira
+        if hasattr(source, "event_type"):
+            raise ValueError(f"ResolutionEvent leaked into graph boundary: {source}")
+
+        if hasattr(target, "event_type"):
+            raise ValueError(f"ResolutionEvent leaked into graph boundary: {target}")
 
         return True
 
     def normalize_node(self, node):
-
-        # hook futuro (ex: external lazy materialization)
         return node
 
     def normalize_edge(self, edge):
