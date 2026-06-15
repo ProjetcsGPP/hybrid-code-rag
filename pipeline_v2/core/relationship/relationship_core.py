@@ -20,27 +20,13 @@ from pipeline_v2.core.identity.resolution_workflow_engine_v2 import (
     ResolutionWorkflowEngineV2,
 )
 
-from pipeline_v2.core.semantic.semantic_authority import (
-    SemanticAuthority,
-)
+from pipeline_v2.core.semantic.semantic_authority import SemanticAuthority
 
-from pipeline_v2.core.identity.resolution_workflow_v2 import (
-    ResolutionEventV2,
-)
-from pipeline_v2.core.contract.contract_enforcer import (
-    ContractEnforcer,
-)
+
+from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 
 
 class RelationshipCoreV2:
-    """
-    Relationship orchestration layer.
-
-    Responsável apenas por:
-    - semantic orchestration
-    - relationship inference
-    - relationship creation
-    """
 
     def __init__(
         self,
@@ -48,18 +34,15 @@ class RelationshipCoreV2:
         graph_core=None,
         identity_registry=None,
     ):
-
         self.symbol_core = symbol_core
         self.graph_core = graph_core
 
-        # registry único de verdade
         if identity_registry is None:
             raise ValueError("RelationshipCoreV2 requires shared identity_registry")
 
         self.identity_registry = identity_registry
 
         self.resolver = RelationshipResolverV2()
-
         self.workflow_engine = ResolutionWorkflowEngineV2()
 
         self.resolution_engine = SymbolResolutionEngineV2(
@@ -69,46 +52,51 @@ class RelationshipCoreV2:
         )
 
         self.semantic_authority = SemanticAuthority()
-
         self.semantic_inference = SemanticInferenceEngineV2()
 
     # =========================================================
     # PUBLIC API
     # =========================================================
 
-    def process_chunk(
-        self,
-        chunk,
-        symbol_table,
-    ):
-        ContractEnforcer.enforce_chunk(chunk)
+    def process_chunk(self, chunk, symbol_table):
+
+        chunk = ContractEnforcer.enforce_chunk(chunk)
 
         relationships = []
-
         semantic_context = self._build_semantic_context(chunk)
 
-        source = self.resolution_engine.resolve_source(
-            chunk,
-            symbol_table,
-            self._chunk_id,
-            self._chunk_metadata,
+        source = str(
+            self.resolution_engine.resolve_source(
+                chunk,
+                symbol_table,
+                self._chunk_id,
+                self._chunk_metadata,
+            )
         )
 
         if not source:
             return relationships
 
-        # 🔴 IMPORTANTE: não mutar source global
         resolved_source = self.identity_registry.resolve(source)
 
-        if isinstance(resolved_source, ResolutionEventV2):
-            self.workflow_engine.emit(resolved_source)
-            return []
+        if not resolved_source.is_resolved():
+            self._ensure_identity_node(source, IdentityMode.INFERRED)
+            resolved_source = self.identity_registry.resolve(source)
+
+        if resolved_source.event:
+            self.workflow_engine.emit(resolved_source.event)
+
+        resolved_source_id = (
+            resolved_source.require_identity()
+            if resolved_source.is_resolved()
+            else source
+        )
+
+        imports_hint = getattr(chunk, "imports_context", None)
 
         for raw_call in self._chunk_raw_calls(chunk):
 
             normalized_call = self.resolution_engine.normalize_call(raw_call)
-
-            imports_hint = getattr(chunk, "imports_context", None)
 
             semantic_result = self.semantic_inference.resolve_call(
                 raw_call=normalized_call["raw"],
@@ -130,16 +118,19 @@ class RelationshipCoreV2:
                 )
 
             resolved = self.resolver.resolve_call(
-                caller_symbol=resolved_source,
+                caller_symbol=resolved_source_id,
                 raw_call=normalized_call["raw"],
                 semantic_context=semantic_context,
             )
 
             if semantic_result:
-
                 resolved.semantic = resolved.semantic.merge_inference(semantic_result)
 
             semantic_data = resolved.semantic
+
+            # =========================================================
+            # TARGET RESOLUTION (SEM fallback chain SEM CRIAÇÃO DE STRING)
+            # =========================================================
 
             target = self.resolution_engine.resolve_semantic_target(
                 semantic_data,
@@ -152,37 +143,38 @@ class RelationshipCoreV2:
                     symbol_table,
                 )
 
-            # 🔵 NEW: import-based recovery (90% ganho aqui)
             if not target:
                 target = self._resolve_from_imports(
                     normalized_call["raw"],
                     imports_hint,
                 )
 
-            if isinstance(target, ResolutionEventV2):
-                self.workflow_engine.emit(target)
+            # ❌ REGRA NOVA: sem fallback textual, sem "external::", sem "unresolved::"
+            if not target:
                 continue
 
-            resolved_target = target
+            resolved_target = self.identity_registry.resolve(str(target))
 
-            if isinstance(resolved_target, ResolutionEventV2):
-                self.workflow_engine.emit(resolved_target)
+            if not resolved_target.is_resolved():
+                self._ensure_identity_node(str(target), IdentityMode.INFERRED)
+                resolved_target = self.identity_registry.resolve(str(target))
+
+            resolved_target_id = (
+                resolved_target.require_identity()
+                if resolved_target.is_resolved()
+                else str(target)
+            )
+
+            # proteção final: se ainda não tem identidade real → skip
+            if not resolved_target_id:
                 continue
 
-            # if resolved_target is None:
-            #     resolved_target = f"external::{target}"
-            if not resolved_target:
-                continue
-
-            # SOURCE identity handling (controlled)
-            self._ensure_identity_node(str(resolved_source), IdentityMode.INFERRED)
-
-            # TARGET identity handling (controlled)
-            self._ensure_identity_node(str(resolved_target), IdentityMode.INFERRED)
+            self._ensure_identity_node(resolved_source_id, IdentityMode.INFERRED)
+            self._ensure_identity_node(resolved_target_id, IdentityMode.INFERRED)
 
             rel = RelationshipFactoryV2.create(
-                source=str(resolved_source),
-                target=str(resolved_target),
+                source=str(resolved_source_id),
+                target=str(resolved_target_id),
                 type=resolved.relationship_type,
                 dispatch=resolved.dispatch,
                 raw_call=normalized_call["raw"],
@@ -203,8 +195,6 @@ class RelationshipCoreV2:
                 metadata=self._build_metadata(chunk, resolved),
             )
 
-            # self.identity_registry.register(rel)
-
             relationships.append(rel)
 
         return relationships
@@ -214,7 +204,6 @@ class RelationshipCoreV2:
     # =========================================================
 
     def _build_metadata(self, chunk, inference):
-
         return {
             "chunk_id": self._chunk_id(chunk),
             "file": self._chunk_file(chunk),
@@ -230,35 +219,31 @@ class RelationshipCoreV2:
 
         context = SemanticContextV2()
 
-        assignments = chunk.assignments
+        assignments = ContractEnforcer.enforce_assignments(chunk.assignments)
 
         for assignment in assignments:
+            assignment = ContractEnforcer.enforce_assignment(assignment)
 
             state = AssignmentResolverV2().resolve(assignment)
-
             if state:
                 context.set(state)
 
         return context
 
     # =========================================================
-    # CHUNK HELPERS
+    # HELPERS
     # =========================================================
 
     def _chunk_metadata(self, chunk):
-
         return chunk.metadata
 
     def _chunk_raw_calls(self, chunk):
-
         return chunk.raw_calls
 
     def _chunk_id(self, chunk):
-
         return chunk.id
 
     def _chunk_file(self, chunk):
-
         return chunk.file
 
     def _resolve_from_imports(self, call: str, imports):
@@ -266,8 +251,8 @@ class RelationshipCoreV2:
             return None
 
         for imp in imports:
-            local = imp["local_name"] if "local_name" in imp else ""
-            module = imp["module"] if "module" in imp else ""
+            local = imp.get("local_name", "")
+            module = imp.get("module", "")
 
             if local and call.startswith(local):
                 return f"{module}.{call}"
@@ -275,7 +260,7 @@ class RelationshipCoreV2:
         return None
 
     # =========================================================
-    # EDGE FILTERING
+    # IDENTITY HANDLING
     # =========================================================
 
     def _ensure_identity_node(self, node_id: str, mode: IdentityMode):

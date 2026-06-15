@@ -4,8 +4,10 @@ from pipeline_v2.core.identity.identity_registry import IdentityRegistryV2
 from pipeline_v2.core.identity.identity_service_v2 import IdentityServiceV2
 
 from pipeline_v2.core.identity.resolution_workflow_v2 import (
-    ResolutionEventV2,
     ResolutionEventTypeV2,
+)
+from pipeline_v2.core.identity.resolution_result_v2 import (
+    ResolutionStatusV2,
 )
 
 registry = IdentityRegistryV2()
@@ -19,23 +21,28 @@ class Dummy:
         self.name = name
         self.canonical = canonical
 
-    def test_identity_resolution():
 
-        a = Dummy("id_1", "alpha", "file.a")
-        b = Dummy("id_2", "beta", "file.b")
+def test_identity_resolution():
 
-        registry.register(a)
-        registry.register(b)
+    a = Dummy("id_1", "alpha", "file.a")
+    b = Dummy("id_2", "beta", "file.b")
 
-        assert service.resolve("id_1") == "id_1"
-        assert service.resolve("alpha") == "id_1"
-        assert service.resolve("file.b") == "id_2"
+    registry.register(a)
+    registry.register(b)
 
-        result = service.resolve("unknown")
+    assert service.resolve("id_1").require_identity() == "id_1"
+    assert service.resolve("alpha").require_identity() == "id_1"
+    assert service.resolve("file.b").require_identity() == "id_2"
 
-        assert isinstance(result, ResolutionEventV2)
-        assert result.event_type == ResolutionEventTypeV2.FAILED_RESOLUTION
-        assert result.source == "unknown"
-        assert result.target is None
+    result = service.resolve("unknown")
 
-        print("✔ IDENTITY UNIFIED OK")
+    assert result.status == ResolutionStatusV2.FAILED
+    assert result.identity_id is None
+
+    assert result.event is not None
+    assert result.event.event_type == ResolutionEventTypeV2.FAILED_RESOLUTION
+
+    assert result.event.source == "unknown"
+    assert result.event.target is None
+
+    print("✔ IDENTITY UNIFIED OK")

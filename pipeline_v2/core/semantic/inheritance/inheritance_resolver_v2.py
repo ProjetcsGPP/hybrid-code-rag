@@ -4,11 +4,6 @@ from typing import List
 
 from pipeline_v2.core.contract.graph_contracts import InheritanceEdgeV2
 
-from pipeline_v2.core.identity.resolution_workflow_v2 import (
-    ResolutionEventV2,
-    ResolutionEventTypeV2,
-)
-
 
 class InheritanceResolverV2:
     """
@@ -74,8 +69,11 @@ class InheritanceResolverV2:
         if normalized in self.symbol_index:
             return self.symbol_index[normalized]
 
-        # 3. fallback external resolution
-        return self._fallback_external(base_name)
+        # 3. unresolved
+        return None
+
+        # Futuramente: fallback para external dependency (ex: classe base de framework)
+        # return self._fallback_external(base_name)
 
     # ----------------------------
     # NORMALIZATION
@@ -88,14 +86,24 @@ class InheritanceResolverV2:
     # FALLBACK
     # ----------------------------
 
-    def _fallback_external(self, name: str) -> str:
-        """
-        Se não resolver, trata como external dependency.
-        """
-
-        return ResolutionEventV2(
-            event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
-            source=name,
-            target=None,
-            context={"reason": "inheritance_not_found"},
-        )
+    # def _fallback_external(
+    #     self,
+    #     name: str,
+    # ) -> ResolutionResultV2:
+    #     """
+    #     Se não resolver, trata como external dependency.
+    #     """
+    #     event = ResolutionEventV2(
+    #         event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
+    #         source=name,
+    #         target=None,
+    #         context={"reason": "inheritance_not_found"},
+    #         confidence=0.0,
+    #         evidence=["inheritance_not_found"],
+    #     )
+    #
+    #     return ResolutionResultV2.failed(
+    #         evidence=("inheritance_not_found",),
+    #         confidence=0.0,
+    #         event=event,
+    #     )

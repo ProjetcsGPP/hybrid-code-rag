@@ -6,6 +6,9 @@ from pipeline_v2.core.identity.resolution_workflow_v2 import (
     ResolutionEventV2,
     ResolutionEventTypeV2,
 )
+from pipeline_v2.core.identity.resolution_result_v2 import (
+    ResolutionResultV2,
+)
 
 
 class SymbolResolutionEngineV2:
@@ -231,9 +234,17 @@ class SymbolResolutionEngineV2:
 
     def build_unresolved(self, call: str):
 
-        return ResolutionEventV2(
+        event = ResolutionEventV2(
             event_type=ResolutionEventTypeV2.FAILED_RESOLUTION,
             source=call,
             target=None,
             context={"reason": "no_match"},
+            confidence=0.0,
+            evidence=["no_match"],
+        )
+
+        return ResolutionResultV2.failed(
+            evidence=("no_match",),
+            confidence=0.0,
+            event=event,
         )

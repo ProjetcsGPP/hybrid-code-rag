@@ -1,5 +1,10 @@
-from pipeline_v2.core.contract.graph_contracts import AssignmentContractV2
+# pipeline_v2/core/state/assignment_resolver.py
+
+
 from pipeline_v2.core.state.variable_state import VariableState
+from pipeline_v2.core.contract.contract_enforcer import (
+    ContractEnforcer,
+)
 
 
 class AssignmentResolverV2:
@@ -30,7 +35,9 @@ class AssignmentResolverV2:
         "objects.create",
     }
 
-    def resolve(self, assignment: AssignmentContractV2):
+    def resolve(self, assignment):
+
+        assignment = ContractEnforcer.enforce_assignment(assignment)
 
         variable = assignment.variable
         if not variable:

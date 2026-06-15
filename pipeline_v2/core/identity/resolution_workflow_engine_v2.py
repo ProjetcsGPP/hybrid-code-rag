@@ -1,41 +1,123 @@
 # pipeline_v2/core/identity/resolution_workflow_engine_v2.py
 
 from collections import defaultdict
-from .resolution_workflow_v2 import ResolutionEventV2
+
+from pipeline_v2.core.identity.resolution_workflow_v2 import (
+    ResolutionEventV2,
+)
 
 
 class ResolutionWorkflowEngineV2:
     """
-    Mantém o grafo de transições de resolução.
+    Registro auditável das transições de resolução.
+
+    Responsabilidades:
+    - armazenar eventos emitidos;
+    - recuperar histórico completo;
+    - recuperar último evento;
+    - permitir replay determinístico.
+
+    NÃO:
+    - resolve identidades;
+    - mantém estado atual;
+    - altera GraphCore;
+    - executa reconciliação.
     """
 
     def __init__(self):
-        self.transitions = defaultdict(list)
+        self.transitions: dict[str, list[ResolutionEventV2]] = defaultdict(list)
 
-    def emit(self, event: ResolutionEventV2):
+    # =====================================================
+    # EVENT REGISTRATION
+    # =====================================================
+
+    def emit(self, event: ResolutionEventV2) -> ResolutionEventV2:
         """
-        Registra evento no grafo de transição.
+        Registra um evento imutável.
+
+        Retorna o próprio evento para facilitar encadeamento.
         """
+
         self.transitions[event.source].append(event)
 
-    def get_history(self, source: str):
-        return self.transitions[source] if source in self.transitions else []
+        return event
 
-    def get_last_state(self, source: str):
-        events = self.transitions[source] if source in self.transitions else []
-        return events[-1] if events else None
+    # =====================================================
+    # HISTORY
+    # =====================================================
 
-    def build_transition_graph(self):
-        graph = {}
+    def get_history(
+        self,
+        source: str,
+    ) -> list[ResolutionEventV2]:
 
-        for source, events in self.transitions.items():
-            graph[source] = [
+        return list(self.transitions.get(source, []))
+
+    # =====================================================
+    # LAST EVENT
+    # =====================================================
+
+    def get_last_event(
+        self,
+        source: str,
+    ) -> ResolutionEventV2 | None:
+
+        events = self.transitions.get(source)
+
+        if not events:
+            return None
+
+        return events[-1]
+
+    # =====================================================
+    # REPLAY
+    # =====================================================
+
+    def replay(
+        self,
+        source: str,
+    ):
+
+        for event in self.transitions.get(source, []):
+            yield event
+
+    # =====================================================
+    # FULL TRANSITION GRAPH
+    # =====================================================
+
+    def build_transition_graph(self) -> dict:
+
+        return {
+            source: [
                 {
-                    "event": e.event_type,
-                    "target": e.target,
-                    "context": e.context,
+                    "event_type": event.event_type.value,
+                    "target": event.target,
+                    "evidence": list(event.evidence),
+                    "confidence": event.confidence,
+                    "context": dict(event.context),
                 }
-                for e in events
+                for event in events
             ]
+            for source, events in self.transitions.items()
+        }
 
-        return graph
+    # =====================================================
+    # STATS
+    # =====================================================
+
+    def stats(self) -> dict:
+
+        total_events = sum(len(events) for events in self.transitions.values())
+
+        return {
+            "tracked_sources": len(self.transitions),
+            "total_events": total_events,
+        }
+
+    # =====================================================
+    # CLEAR
+    # =====================================================
+
+    def clear(self):
+
+        self.transitions.clear()

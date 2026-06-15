@@ -14,7 +14,7 @@ from pipeline_v2.core.contract.semantic_classifier import (
     SemanticCallClassifier,
 )
 
-from pipeline_v2.core.contract.semantic_resolution_payload import (
+from pipeline_v2.core.context.semantic_resolution_payload import (
     SemanticResolutionPayload,
 )
 

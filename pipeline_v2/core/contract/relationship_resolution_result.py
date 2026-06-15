@@ -7,7 +7,7 @@ from pipeline_v2.core.relationship.relationship_types import (
     RelationshipType,
 )
 
-from pipeline_v2.core.contract.semantic_resolution_payload import (
+from pipeline_v2.core.context.semantic_resolution_payload import (
     SemanticResolutionPayload,
 )
 

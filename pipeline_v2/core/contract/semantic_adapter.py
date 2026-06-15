@@ -5,6 +5,8 @@ from .symbol_adapter import SymbolAdapter
 
 from .contract_enforcer import ContractEnforcer
 
+from pipeline_v2.core.contract.graph_contracts import AssignmentContractV2
+
 
 class SemanticAdapter:
 
@@ -19,13 +21,29 @@ class SemanticAdapter:
 
         meta = chunk["metadata"]
 
+        assignments = [
+            (
+                AssignmentContractV2(
+                    variable=a.get("variable"),
+                    source=a.get("source", ""),
+                    semantic_type=a.get("semantic_type", "unknown"),
+                    model=a.get("model"),
+                    confidence=a.get("confidence", 0.5),
+                    framework_hint=a.get("framework_hint"),
+                )
+                if isinstance(a, dict)
+                else a
+            )
+            for a in meta.get("assignments", [])
+        ]
+
         chunk_contract = ChunkContract(
             id=meta["chunk_id"],
             file=meta["file"],
             name=meta["name"],
             type=meta["type"],
             raw_calls=meta["calls"] if "calls" in meta else [],
-            assignments=meta["assignments"] if "assignments" in meta else [],
+            assignments=assignments,
             metadata=meta,
         )
 

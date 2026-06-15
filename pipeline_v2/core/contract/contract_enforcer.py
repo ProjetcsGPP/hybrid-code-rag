@@ -7,12 +7,20 @@ from pipeline_v2.core.relationship.relationship_models import (
 )
 from pipeline_v2.core.symbol.symbol_models import SymbolV2
 
+from pipeline_v2.core.contract.graph_contracts import AssignmentContractV2
+
 
 class ContractViolation(Exception):
     pass
 
 
 class ContractEnforcer:
+
+    @staticmethod
+    def enforce_identity(value: Any):
+        if value is None or value == "":
+            raise ContractViolation("Invalid identity")
+        return str(value)
 
     # -------------------------
     # CHUNK
@@ -60,3 +68,25 @@ class ContractEnforcer:
                     f"recebido {type(i)}"
                 )
         return items
+
+    # -------------------------
+    # ASSIGNMENT
+    # -------------------------
+    @staticmethod
+    def enforce_assignment(assignment: Any) -> AssignmentContractV2:
+        from pipeline_v2.core.contract.graph_contracts import AssignmentContractV2
+
+        if isinstance(assignment, AssignmentContractV2):
+            return assignment
+
+        if isinstance(assignment, dict):
+            return AssignmentContractV2(**assignment)
+
+        raise ContractViolation(
+            f"Assignment inválido. Esperado AssignmentContractV2 ou dict, "
+            f"recebido: {type(assignment)}"
+        )
+
+    @staticmethod
+    def enforce_assignments(items: list) -> list:
+        return [ContractEnforcer.enforce_assignment(i) for i in items]

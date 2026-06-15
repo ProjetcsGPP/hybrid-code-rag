@@ -1,16 +1,12 @@
 # pipeline_v2/core/builder/graph_builder.py
 
-
 from ..graph.graph_types import GraphNodeV2, GraphEdgeV2
 
 from pipeline_v2.core.contract.contract_enforcer import ContractEnforcer
 from pipeline_v2.core.contract.graph_contracts import GraphSubgraphV2
 
-# from pipeline_v2.core.identity.identity_service_v2 import IdentityServiceV2
 from pipeline_v2.core.symbol.symbol_models import SymbolV2
-from pipeline_v2.core.relationship.relationship_models import (
-    RelationshipV2,
-)
+from pipeline_v2.core.relationship.relationship_models import RelationshipV2
 
 
 class GraphBuilderV2:
@@ -23,7 +19,6 @@ class GraphBuilderV2:
         self.node_index = {}
         self.graph_core = graph_core
         self.identity_registry = identity_registry
-        # self.identity = IdentityServiceV2(identity_registry)
 
     # -------------------------
     # SYMBOL INGESTION
@@ -32,12 +27,9 @@ class GraphBuilderV2:
 
         symbol = ContractEnforcer.enforce_symbol(symbol)
 
-        # 1. registry é a autoridade de registro
         node = self.identity_registry.register(symbol)
-
         node_id = node.id
 
-        # 2. node final do grafo usa identity registrada
         graph_node = GraphNodeV2(
             id=node_id,
             type=(
@@ -61,22 +53,35 @@ class GraphBuilderV2:
 
         rel = ContractEnforcer.enforce_relationship(rel)
 
-        # 🔥 resolve via convergence layer + registry
-        # source = self.identity_registry.resolve(rel.source)
-        # target = self.identity_registry.resolve(rel.target)
-        source = rel.source
-        target = rel.target
+        source = str(rel.source)
+        target = str(rel.target)
 
-        if source is None or target is None:
-            return None
+        if not self.graph_core.get_node(source):
+            self.graph_core.add_node(
+                GraphNodeV2(
+                    id=source,
+                    type="inferred",
+                    name=source,
+                    canonical=source,
+                    metadata={},
+                )
+            )
 
-        ContractEnforcer.enforce_identity(source)
-        ContractEnforcer.enforce_identity(target)
+        if not self.graph_core.get_node(target):
+            self.graph_core.add_node(
+                GraphNodeV2(
+                    id=target,
+                    type="inferred",
+                    name=target,
+                    canonical=target,
+                    metadata={},
+                )
+            )
 
         edge = GraphEdgeV2(
             id=rel.id,
-            source=str(source),
-            target=str(target),
+            source=source,
+            target=target,
             type=(rel.type.value if hasattr(rel.type, "value") else str(rel.type)),
             layer=rel.layer,
             status=rel.status,
@@ -86,11 +91,6 @@ class GraphBuilderV2:
 
         self.graph_core.add_edge(edge)
 
-        # NÃO registrar relationship como identity
-        # identity já foi resolvida no RelationshipCore
-
-        # self.identity_registry.register(rel)
-
         return edge
 
     # -------------------------
@@ -98,26 +98,14 @@ class GraphBuilderV2:
     # -------------------------
     def ingest_file(self, context):
 
-        # ❌ node_index REMOVED COMPLETELY
-
         edges = []
 
-        # 1. symbols
-        ContractEnforcer.enforce_list(
-            context.symbols,
-            SymbolV2,
-        )
-
+        ContractEnforcer.enforce_list(context.symbols, SymbolV2)
         for symbol in context.symbols:
             symbol = ContractEnforcer.enforce_symbol(symbol)
             self.ingest_symbol(symbol)
 
-        # 2. relationships
-        ContractEnforcer.enforce_list(
-            context.relationships,
-            RelationshipV2,
-        )
-
+        ContractEnforcer.enforce_list(context.relationships, RelationshipV2)
         for rel in context.relationships:
             rel = ContractEnforcer.enforce_relationship(rel)
 
@@ -133,17 +121,14 @@ class GraphBuilderV2:
         }
 
     # -------------------------
-    # BUILD (SINGLE ENTRY POINT)
+    # BUILD
     # -------------------------
     def _build_graph(self, semantic_payload):
 
-        # agora apenas organiza/estrutura o que já foi produzido
         return GraphSubgraphV2(
             edges=semantic_payload.get("edges", []),
             nodes=[],
         )
 
     def build(self, semantic_payload):
-        graph = self._build_graph(semantic_payload)
-
-        return graph
+        return self._build_graph(semantic_payload)
