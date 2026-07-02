@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from typing import List
+import argparse
 
 import json
 
@@ -26,17 +27,44 @@ from pipeline_v2.tests.identity_contract.identity_contract_harness import (
     IdentityContractHarness,
 )
 
+# Validations
+
+from pipeline_v2.validation.runner.validation_runner import ValidationRunner
+from pipeline_v2.validation.collectors.graph_metrics_collector import (
+    GraphMetricsCollector,
+)
+from pipeline_v2.validation.reporters.console_reporter import ConsoleReporter
+from pipeline_v2.validation.contracts.validation_context import ValidationContext
+
+from pipeline_v2.validation.snapshots.snapshot_engine import ValidationSnapshotEngineV3
+from pipeline_v2.validation.snapshots.deterministic_contract import (
+    DeterministicValidationContract,
+)
+
 # =====================================================
 # CONFIG
 # =====================================================
+
+# DEFAULT_IGNORE_DIRS = {
+#     "venv",
+#     "__pycache__",
+#     ".git",
+#     "migrations",
+#     "node_modules",
+# }
 
 DEFAULT_IGNORE_DIRS = {
     "venv",
     "__pycache__",
     ".git",
-    "migrations",
     "node_modules",
+    "migrations",
+    "tests",
+    "docs",
+    "logs",
+    "scripts",
 }
+
 
 DEFAULT_EXTENSIONS = {".py"}
 
@@ -71,6 +99,50 @@ def safe_symbol_type(value: str):
         return SymbolType(value)
     except Exception:
         return SymbolType.UNKNOWN if hasattr(SymbolType, "UNKNOWN") else value
+
+
+# =====================================================
+# validation Runner
+# =====================================================
+
+
+def run_validation(snapshot, runner, mode, export_snapshot=False):
+
+    print("\n===== VALIDATION RUN =====")
+
+    if mode in ["full", "summary"]:
+        runner.run(snapshot)
+
+    # -------------------------
+    # MODE: SANITY CHECK
+    # -------------------------
+    if mode == "sanity":
+
+        print("\n===== SANITY CHECK =====")
+
+        def has_objects(obj):
+            return "object at 0x" in str(obj)
+
+        print(
+            "Nodes contaminated:", any(has_objects(v) for v in snapshot.nodes.values())
+        )
+        print(
+            "Registry contaminated:",
+            any(has_objects(v) for v in snapshot.registry.values()),
+        )
+        print("Edges contaminated:", any(has_objects(v) for v in snapshot.edges))
+
+    # -------------------------
+    # MODE: FILE EXPORT
+    # -------------------------
+    if mode == "file" or export_snapshot:
+
+        import json
+
+        with open("snapshot_dump.json", "w", encoding="utf-8") as f:
+            json.dump(snapshot.__dict__, f, indent=2, ensure_ascii=False, default=str)
+
+        print("\nSnapshot exportado: snapshot_dump.json")
 
 
 # =====================================================
@@ -238,6 +310,41 @@ def run_project_ingestion(project_root: str):
         )
 
     # -------------------------
+    # VALIDATION RUNNER
+    # -------------------------
+
+    context = ValidationContext(
+        project_root=Path(project_root),
+        runtime=runtime,
+        identity_registry=identity_registry,
+        graph_core=graph_runtime,
+        chunks=all_chunks,
+        symbols=symbols,
+        relationships=relationships,
+    )
+
+    snapshot_engine = ValidationSnapshotEngineV3()
+    contract = DeterministicValidationContract()
+
+    snapshot = snapshot_engine.build(context)
+    snapshot = contract.enforce(snapshot)
+
+    runner = ValidationRunner()
+
+    runner.register_collector(GraphMetricsCollector())
+
+    runner.register_reporter(ConsoleReporter())
+
+    args = parse_args()
+
+    run_validation(
+        snapshot=snapshot,
+        runner=runner,
+        mode=args.mode,
+        export_snapshot=args.export_snapshot,
+    )
+
+    # -------------------------
     # RETURN
     # -------------------------
     return {
@@ -250,6 +357,24 @@ def run_project_ingestion(project_root: str):
         "contract": contract_result,
         "audit": report,
     }
+
+
+def parse_args():
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--mode",
+        choices=["full", "summary", "sanity", "file"],
+        default="summary",
+        help="Execution mode",
+    )
+
+    parser.add_argument(
+        "--export-snapshot", action="store_true", help="Export snapshot to json file"
+    )
+
+    return parser.parse_args()
 
 
 # =====================================================
